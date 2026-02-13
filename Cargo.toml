@@ -15,6 +15,7 @@ edition = "2021"
 temporalio-sdk = { git = "https://github.com/temporalio/sdk-core", rev = "7ecb7c0" }
 temporalio-sdk-core = { git = "https://github.com/temporalio/sdk-core", rev = "7ecb7c0" }
 temporalio-client = { git = "https://github.com/temporalio/sdk-core", rev = "7ecb7c0" }
+temporalio-common = { git = "https://github.com/temporalio/sdk-core", rev = "7ecb7c0" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

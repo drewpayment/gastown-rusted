@@ -730,8 +730,10 @@ dependencies = [
 name = "gtr-temporal"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "gtr-core",
  "temporalio-client",
+ "temporalio-common",
  "temporalio-sdk",
  "temporalio-sdk-core",
  "tokio",

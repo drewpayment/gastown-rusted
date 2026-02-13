@@ -8,4 +8,6 @@ gtr-core = { path = "../gtr-core" }
 temporalio-sdk = { workspace = true }
 temporalio-sdk-core = { workspace = true }
 temporalio-client = { workspace = true }
+temporalio-common = { workspace = true }
+anyhow = "1"
 tokio = { workspace = true }
