@@ -1,5 +1,6 @@
 pub mod errors;
 pub mod ids;
+pub mod types;
 
 pub use errors::GtrError;
 
