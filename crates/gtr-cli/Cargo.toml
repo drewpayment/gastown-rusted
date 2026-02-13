@@ -5,3 +5,5 @@ edition.workspace = true
 
 [dependencies]
 gtr-core = { path = "../gtr-core" }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
