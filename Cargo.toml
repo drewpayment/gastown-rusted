@@ -3,8 +3,18 @@ resolver = "2"
 members = [
     "crates/gtr-core",
     "crates/gtr-cli",
+    "crates/gtr-temporal",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+
+[workspace.dependencies]
+# Temporal SDK (pre-alpha, pinned to specific commit)
+temporalio-sdk = { git = "https://github.com/temporalio/sdk-core", rev = "7ecb7c0" }
+temporalio-sdk-core = { git = "https://github.com/temporalio/sdk-core", rev = "7ecb7c0" }
+temporalio-client = { git = "https://github.com/temporalio/sdk-core", rev = "7ecb7c0" }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }

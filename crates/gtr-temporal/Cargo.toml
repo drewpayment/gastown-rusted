@@ -1,0 +1,11 @@
+[package]
+name = "gtr-temporal"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+gtr-core = { path = "../gtr-core" }
+temporalio-sdk = { workspace = true }
+temporalio-sdk-core = { workspace = true }
+temporalio-client = { workspace = true }
+tokio = { workspace = true }
