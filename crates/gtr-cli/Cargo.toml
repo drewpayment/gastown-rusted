@@ -5,5 +5,7 @@ edition.workspace = true
 
 [dependencies]
 gtr-core = { path = "../gtr-core" }
+gtr-temporal = { path = "../gtr-temporal" }
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
+tokio = { workspace = true }

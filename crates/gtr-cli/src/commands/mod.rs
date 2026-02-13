@@ -5,4 +5,5 @@ pub mod mail;
 pub mod services;
 pub mod sling;
 pub mod work;
+pub mod worker;
 pub mod workspace;

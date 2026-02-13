@@ -42,6 +42,10 @@ enum Command {
     /// Diagnostics and system health
     #[command(subcommand)]
     Diagnostics(commands::diagnostics::DiagnosticsCommand),
+
+    /// Run a Temporal worker
+    #[command(subcommand)]
+    Worker(commands::worker::WorkerCommand),
 }
 
 fn main() -> anyhow::Result<()> {
@@ -56,5 +60,6 @@ fn main() -> anyhow::Result<()> {
         Command::Services(cmd) => commands::services::run(cmd),
         Command::Workspace(cmd) => commands::workspace::run(cmd),
         Command::Diagnostics(cmd) => commands::diagnostics::run(cmd),
+        Command::Worker(cmd) => commands::worker::run(cmd),
     }
 }

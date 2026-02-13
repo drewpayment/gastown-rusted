@@ -714,6 +714,8 @@ dependencies = [
  "anyhow",
  "clap",
  "gtr-core",
+ "gtr-temporal",
+ "tokio",
 ]
 
 [[package]]
