@@ -3,6 +3,7 @@ pub mod boot;
 pub mod convoy;
 pub mod formula;
 pub mod mayor;
+pub mod molecule;
 pub mod patrol;
 pub mod polecat;
 pub mod refinery;

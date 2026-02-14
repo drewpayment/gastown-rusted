@@ -234,3 +234,39 @@ pub struct HookSignal {
     pub molecule_id: Option<String>,
     pub current_step: Option<String>,
 }
+
+// Molecule signal names
+pub const SIGNAL_MOL_STEP_DONE: &str = "mol_step_done";
+pub const SIGNAL_MOL_STEP_FAIL: &str = "mol_step_fail";
+pub const SIGNAL_MOL_PAUSE: &str = "mol_pause";
+pub const SIGNAL_MOL_RESUME: &str = "mol_resume";
+pub const SIGNAL_MOL_CANCEL: &str = "mol_cancel";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MolStepDoneSignal {
+    pub step_ref: String,
+    pub output: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MolStepFailSignal {
+    pub step_ref: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MoleculeState {
+    pub id: String,
+    pub formula_name: String,
+    pub status: String,
+    pub steps: Vec<MolStepState>,
+    pub current_step: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MolStepState {
+    pub ref_id: String,
+    pub title: String,
+    pub status: String,
+    pub output: Option<String>,
+}
