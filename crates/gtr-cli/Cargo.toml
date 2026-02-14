@@ -14,3 +14,8 @@ clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 toml = "0.8"
 tokio = { workspace = true }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+temporalio-sdk = { workspace = true }
+temporalio-sdk-core = { workspace = true }
+temporalio-common = { git = "https://github.com/temporalio/sdk-core", rev = "7ecb7c0" }
