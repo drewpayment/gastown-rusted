@@ -15,17 +15,30 @@ pub async fn agent_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Err
     let mut status = "idle".to_string();
     let mut current_work: Option<String> = None;
     let mut inbox: Vec<MailEntry> = vec![];
+    let mut hook: Option<HookSignal> = None;
 
     let mut assign_ch = ctx.make_signal_channel(SIGNAL_AGENT_ASSIGN);
     let mut unassign_ch = ctx.make_signal_channel(SIGNAL_AGENT_UNASSIGN);
     let mut mail_ch = ctx.make_signal_channel(SIGNAL_AGENT_MAIL);
     let mut nudge_ch = ctx.make_signal_channel(SIGNAL_AGENT_NUDGE);
     let mut stop_ch = ctx.make_signal_channel(SIGNAL_AGENT_STOP);
+    let mut hook_ch = ctx.make_signal_channel(SIGNAL_HOOK);
+    let mut hook_clear_ch = ctx.make_signal_channel(SIGNAL_HOOK_CLEAR);
 
     tracing::info!("Agent {id} ({role}) started — idle");
 
     loop {
         tokio::select! {
+            biased;
+            Some(_) = stop_ch.next() => {
+                status = "stopped".to_string();
+                tracing::info!("Agent {id} stopped");
+                return Ok(WfExitValue::Normal(
+                    serde_json::to_string(&AgentState {
+                        id, role, status, current_work, inbox, hook,
+                    })?
+                ));
+            }
             Some(signal) = assign_ch.next() => {
                 if let Some(payload) = signal.input.first() {
                     if let Ok(data) = serde_json::from_slice::<AgentAssignSignal>(&payload.data) {
@@ -41,6 +54,18 @@ pub async fn agent_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Err
                     current_work = None;
                     status = "idle".to_string();
                 }
+            }
+            Some(signal) = hook_ch.next() => {
+                if let Some(payload) = signal.input.first() {
+                    if let Ok(data) = serde_json::from_slice::<HookSignal>(&payload.data) {
+                        tracing::info!("Agent {id}: hook set — {}", data.work_item_id);
+                        hook = Some(data);
+                    }
+                }
+            }
+            Some(_) = hook_clear_ch.next() => {
+                tracing::info!("Agent {id}: hook cleared");
+                hook = None;
             }
             Some(signal) = mail_ch.next() => {
                 if let Some(payload) = signal.input.first() {
@@ -63,15 +88,6 @@ pub async fn agent_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Err
                         });
                     }
                 }
-            }
-            Some(_) = stop_ch.next() => {
-                status = "stopped".to_string();
-                tracing::info!("Agent {id} stopped");
-                return Ok(WfExitValue::Normal(
-                    serde_json::to_string(&AgentState {
-                        id, role, status, current_work, inbox,
-                    })?
-                ));
             }
         }
     }

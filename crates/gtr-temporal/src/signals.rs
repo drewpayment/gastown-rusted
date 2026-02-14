@@ -139,6 +139,8 @@ pub struct AgentState {
     pub status: String,
     pub current_work: Option<String>,
     pub inbox: Vec<MailEntry>,
+    #[serde(default)]
+    pub hook: Option<HookSignal>,
 }
 
 // Refinery signal names
