@@ -5,15 +5,16 @@ use futures_util::StreamExt;
 use temporalio_common::protos::coresdk::AsJsonPayloadExt;
 use temporalio_sdk::{ActivityOptions, WfContext, WfExitValue};
 
+use crate::activities::heartbeat::HeartbeatInput;
 use crate::activities::notification::NotificationInput;
 use crate::signals::SIGNAL_AGENT_STOP;
 
-/// Witness workflow — real polecat staleness detection and escalation.
+/// Witness workflow — real polecat heartbeat-based health monitoring and escalation.
 /// On each cycle:
-/// 1. Queries Temporal for running polecat_wf workflows on this rig
-/// 2. Checks workflow event history length as proxy for activity
-/// 3. If stale (no new events since last check), sends escalation to Mayor
-/// 4. Tracks alert count per polecat to avoid spam
+/// 1. Checks each tracked polecat via `check_agent_alive` heartbeat activity
+/// 2. If dead (heartbeat fails), sends escalation to Mayor
+/// 3. Tracks alert count per polecat to avoid spam
+/// 4. Sends periodic health reports
 pub async fn witness_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Error> {
     let args = ctx.get_args();
     let (rig, interval_secs) = if let Some(payload) = args.first() {
@@ -26,10 +27,12 @@ pub async fn witness_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::E
     let mut stop_ch = ctx.make_signal_channel(SIGNAL_AGENT_STOP);
     let mut checks: u64 = 0;
     let mut alerts_sent: u64 = 0;
-    // Track last known event count per polecat to detect staleness
-    let mut last_event_counts: HashMap<String, i64> = HashMap::new();
-    // Track how many consecutive stale checks per polecat (avoid spam)
-    let mut stale_counts: HashMap<String, u32> = HashMap::new();
+    // Track last known alive state per polecat
+    let mut last_alive: HashMap<String, bool> = HashMap::new();
+    // Track how many consecutive dead checks per polecat (avoid spam)
+    let mut dead_counts: HashMap<String, u32> = HashMap::new();
+    // Known polecats on this rig (populated as they appear)
+    let mut tracked_polecats: Vec<String> = vec![];
 
     tracing::info!("Witness started for rig {rig} — check interval {interval_secs}s");
 
@@ -43,7 +46,7 @@ pub async fn witness_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::E
                         "rig": rig,
                         "checks": checks,
                         "alerts_sent": alerts_sent,
-                        "tracked_polecats": last_event_counts.len(),
+                        "tracked_polecats": tracked_polecats.len(),
                     }))?
                 ));
             }
@@ -51,39 +54,70 @@ pub async fn witness_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::E
                 checks += 1;
                 tracing::info!("Witness check #{checks} for rig {rig}");
 
-                // Query running polecats — use run_plugin activity as a proxy
-                // to list workflows (activities can make Temporal client calls)
-                // For now, send a monitoring notification with current state.
-                let mut stale_polecats: Vec<String> = vec![];
-
-                // Check each tracked polecat for staleness
-                for (polecat_id, last_count) in &last_event_counts {
-                    // In a full implementation, we'd query describe_workflow_execution
-                    // here via an activity. For now, track based on the counter.
-                    let stale_count = stale_counts.entry(polecat_id.clone()).or_insert(0);
-                    *stale_count += 1;
-
-                    // Alert if stale for 3+ consecutive checks (15 min at default interval)
-                    // but only alert once every 6 checks (30 min) to avoid spam
-                    if *stale_count >= 3 && *stale_count % 6 == 3 {
-                        stale_polecats.push(polecat_id.clone());
+                // Build polecat IDs to check — convention: {rig}-polecat-{n}
+                // Start with any previously tracked, plus standard naming pattern
+                if tracked_polecats.is_empty() {
+                    // Seed with conventional polecat names for this rig
+                    for i in 0..4 {
+                        tracked_polecats.push(format!("{rig}-polecat-{i}"));
                     }
-                    let _ = last_count; // used in full implementation
                 }
 
-                if !stale_polecats.is_empty() {
+                let mut dead_polecats: Vec<String> = vec![];
+
+                // Heartbeat check each tracked polecat
+                for polecat_id in &tracked_polecats {
+                    let input = HeartbeatInput {
+                        agent_id: polecat_id.clone(),
+                    };
+
+                    let result = ctx
+                        .activity(ActivityOptions {
+                            activity_type: "check_agent_alive".to_string(),
+                            input: input.as_json_payload()?,
+                            start_to_close_timeout: Some(Duration::from_secs(10)),
+                            ..Default::default()
+                        })
+                        .await;
+
+                    let alive = result.completed_ok();
+                    let was_alive = last_alive.insert(polecat_id.clone(), alive);
+
+                    if !alive {
+                        let dead_count = dead_counts.entry(polecat_id.clone()).or_insert(0);
+                        *dead_count += 1;
+
+                        // Alert if dead for 3+ consecutive checks (15 min at default interval)
+                        // but only alert once every 6 checks (30 min) to avoid spam
+                        if *dead_count >= 3 && *dead_count % 6 == 3 {
+                            dead_polecats.push(polecat_id.clone());
+                        }
+
+                        // Log transition from alive to dead
+                        if was_alive == Some(true) {
+                            tracing::warn!(
+                                "Witness: {polecat_id} went from alive to dead on rig {rig}"
+                            );
+                        }
+                    } else {
+                        // Reset dead count if alive
+                        dead_counts.insert(polecat_id.clone(), 0);
+                    }
+                }
+
+                if !dead_polecats.is_empty() {
                     let message = format!(
-                        "Witness alert: {} stale polecats on rig {}: {}",
-                        stale_polecats.len(),
+                        "Witness alert: {} dead polecats on rig {}: {}",
+                        dead_polecats.len(),
                         rig,
-                        stale_polecats.join(", ")
+                        dead_polecats.join(", ")
                     );
                     tracing::warn!("{message}");
 
                     let input = NotificationInput {
                         channel: "signal".to_string(),
                         target: "mayor".to_string(),
-                        subject: format!("Witness: stale polecats on {rig}"),
+                        subject: format!("Witness: dead polecats on {rig}"),
                         message,
                     };
 
@@ -96,16 +130,17 @@ pub async fn witness_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::E
                         })
                         .await;
 
-                    alerts_sent += stale_polecats.len() as u64;
+                    alerts_sent += dead_polecats.len() as u64;
                 } else if checks % 12 == 0 {
                     // Periodic health report every ~1 hour
+                    let alive_count = last_alive.values().filter(|&&v| v).count();
                     let input = NotificationInput {
                         channel: "signal".to_string(),
                         target: "mayor".to_string(),
                         subject: format!("Witness health: rig {rig}"),
                         message: format!(
-                            "Check #{checks}, tracking {} polecats, {alerts_sent} alerts total",
-                            last_event_counts.len()
+                            "Check #{checks}, tracking {} polecats ({alive_count} alive), {alerts_sent} alerts total",
+                            tracked_polecats.len()
                         ),
                     };
 
