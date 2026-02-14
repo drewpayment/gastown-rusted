@@ -61,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Command::Convoy(cmd) => commands::convoy::run(cmd),
+        Command::Convoy(cmd) => commands::convoy::run(cmd).await,
         Command::Work(cmd) => commands::work::run(cmd).await,
         Command::Sling(cmd) => commands::sling::run(cmd),
         Command::Mail(cmd) => commands::mail::run(cmd),
