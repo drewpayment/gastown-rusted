@@ -87,6 +87,10 @@ enum Command {
     /// Save context for the next session
     Handoff(commands::handoff::HandoffCommand),
 
+    /// Checkpoint management — save/restore session state
+    #[command(subcommand)]
+    Checkpoint(commands::checkpoint::CheckpointCommand),
+
     /// Real-time activity dashboard
     Feed(commands::feed::FeedCommand),
 
@@ -101,6 +105,10 @@ enum Command {
 
     /// Show Gas Town status
     Status,
+
+    /// Session management — list/status of agent sessions
+    #[command(subcommand)]
+    Session(commands::session::SessionCommand),
 
     /// Manage services
     #[command(subcommand)]
@@ -160,11 +168,13 @@ async fn main() -> anyhow::Result<()> {
         Command::Handoff(cmd) => commands::handoff::run(cmd).await,
         Command::Agents(cmd) => commands::agents::run(cmd),
         Command::Mayor(cmd) => commands::mayor::run(cmd).await,
+        Command::Checkpoint(cmd) => commands::checkpoint::run(cmd).await,
         Command::Feed(cmd) => commands::feed::run(cmd).await,
         Command::Doctor => commands::doctor::run().await,
         Command::Up => commands::up::run().await,
         Command::Down => commands::down::run().await,
         Command::Status => commands::status::run().await,
+        Command::Session(cmd) => commands::session::run(cmd).await,
         Command::Services(cmd) => commands::services::run(cmd),
         Command::Workspace(cmd) => commands::workspace::run(cmd),
         Command::Diagnostics(cmd) => commands::diagnostics::run(cmd).await,

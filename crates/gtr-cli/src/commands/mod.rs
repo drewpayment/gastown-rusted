@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod checkpoint;
 pub mod convoy;
 pub mod crew;
 pub mod diagnostics;
@@ -20,6 +21,7 @@ pub mod polecat;
 pub mod prime;
 pub mod rig;
 pub mod services;
+pub mod session;
 pub mod sling;
 pub mod status;
 pub mod unsling;
