@@ -3,6 +3,7 @@ pub mod boot;
 pub mod convoy;
 pub mod dog;
 pub mod formula;
+pub mod gate;
 pub mod mayor;
 pub mod molecule;
 pub mod patrol;

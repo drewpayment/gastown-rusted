@@ -77,6 +77,10 @@ enum Command {
     #[command(subcommand)]
     Dog(commands::dog::DogCommand),
 
+    /// Manage gates (async wait primitives)
+    #[command(subcommand)]
+    Gate(commands::gate::GateCommand),
+
     /// Inject context for a new agent session
     Prime(commands::prime::PrimeCommand),
 
@@ -148,6 +152,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Rig(cmd) => commands::rig::run(cmd).await,
         Command::Crew(cmd) => commands::crew::run(cmd).await,
         Command::Dog(cmd) => commands::dog::run(cmd).await,
+        Command::Gate(cmd) => commands::gate::run(cmd).await,
         Command::Prime(cmd) => commands::prime::run(cmd).await,
         Command::Handoff(cmd) => commands::handoff::run(cmd).await,
         Command::Agents(cmd) => commands::agents::run(cmd),
