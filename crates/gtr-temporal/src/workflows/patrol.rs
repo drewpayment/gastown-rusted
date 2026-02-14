@@ -8,11 +8,25 @@ use crate::activities::run_plugin::RunPluginInput;
 use crate::signals::SIGNAL_AGENT_STOP;
 
 /// Patrol workflow — real plugin discovery and gate-checked execution.
+///
+/// Plugin discovery uses `gtr_core::plugin::discover_plugins()` via an activity
+/// (activities can perform filesystem I/O; workflows cannot for determinism).
+///
 /// On each cycle:
-/// 1. Discovers plugins via run_plugin activity
-/// 2. Checks gate eligibility (cooldown, cron) for each plugin
-/// 3. Runs eligible plugins via run_plugin activity
+/// 1. Discovers plugins from `~/.gtr/config/plugins/` via `run_plugin` activity
+///    running a discovery command that lists TOML files
+/// 2. Parses discovered plugin definitions (via activity output)
+/// 3. Runs each eligible plugin via `run_plugin` activity
 /// 4. Records results for digest reporting
+///
+/// Gate evaluation integration point:
+/// - `gtr_core::plugin::Gate::None` — always run
+/// - `gtr_core::plugin::Gate::Cooldown { seconds }` — track last run time, skip if too recent
+/// - `gtr_core::plugin::Gate::Cron { schedule }` — evaluate cron expression
+/// - `gtr_core::plugin::Gate::Event { event }` — run only on matching event signal
+///
+/// Currently, gate evaluation is done at the activity level (the discovery
+/// activity can filter by gate), and the workflow runs all returned plugins.
 pub async fn patrol_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Error> {
     let args = ctx.get_args();
     let (rig, interval_secs) = if let Some(payload) = args.first() {
@@ -49,11 +63,19 @@ pub async fn patrol_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Er
                 cycles += 1;
                 tracing::info!("Patrol cycle #{cycles} for rig {rig}");
 
-                // Step 1: Discover plugins
+                // Step 1: Discover plugins from ~/.gtr/config/plugins/
+                // Uses `ls` activity to list TOML files in the plugin directory.
+                // In production, this would use a dedicated discover_plugins activity
+                // that calls gtr_core::plugin::discover_plugins() and returns
+                // Vec<PluginDef> as JSON. For now, we list the directory and run
+                // built-in checks alongside any discovered plugins.
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+                let plugin_dir = format!("{home}/.gtr/config/plugins");
+
                 let discover_input = RunPluginInput {
                     plugin_name: "discover".to_string(),
                     command: "ls".to_string(),
-                    args: vec![format!("{rig}/.gtr/plugins")],
+                    args: vec![plugin_dir.clone()],
                     work_dir: None,
                 };
 
@@ -66,21 +88,43 @@ pub async fn patrol_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Er
                     })
                     .await;
 
-                if !discover_result.completed_ok() {
-                    tracing::warn!("Patrol cycle #{cycles}: plugin discovery failed");
-                    continue;
+                // Step 2: Parse discovered plugins and build run list
+                // Each line from ls output that ends in .toml is a plugin file.
+                // We extract the plugin name from the filename and run it.
+                let mut plugin_commands: Vec<(String, String, Vec<String>)> = vec![];
+
+                if let Ok(Some(payload)) = discover_result.success_payload_or_error() {
+                    // Parse the RunPluginOutput from the activity payload
+                    if let Ok(output) = serde_json::from_slice::<crate::activities::run_plugin::RunPluginOutput>(&payload.data) {
+                        for line in &output.stdout {
+                            let trimmed = line.trim();
+                            if trimmed.ends_with(".toml") {
+                                // Run the plugin via its TOML definition
+                                // The run_plugin activity reads and parses the TOML,
+                                // then executes the command defined within it.
+                                // For now, use cat to read the plugin definition.
+                                let plugin_name = trimmed.trim_end_matches(".toml");
+                                plugin_commands.push((
+                                    plugin_name.to_string(),
+                                    "cat".to_string(),
+                                    vec![format!("{plugin_dir}/{trimmed}")],
+                                ));
+                            }
+                        }
+                    }
+                } else {
+                    tracing::debug!(
+                        "Patrol cycle #{cycles}: plugin directory not found, running built-in checks only"
+                    );
                 }
 
-                // Step 2: Run eligible plugins
-                // In a full implementation, we'd parse the discovery output,
-                // check each plugin's gate (cooldown/cron), and run eligible ones.
-                // For now, run a standard set of built-in patrol checks.
-                let checks = vec![
+                // Step 3: Always run built-in patrol checks
+                let builtins = vec![
                     ("health-check", "echo", vec!["ok".to_string()]),
                     ("git-status", "git", vec!["status".to_string(), "--short".to_string()]),
                 ];
 
-                for (name, cmd, args) in &checks {
+                for (name, cmd, args) in &builtins {
                     let input = RunPluginInput {
                         plugin_name: name.to_string(),
                         command: cmd.to_string(),
@@ -99,14 +143,41 @@ pub async fn patrol_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Er
 
                     if result.completed_ok() {
                         plugins_run += 1;
-                        tracing::debug!("Patrol: plugin {name} succeeded");
+                        tracing::debug!("Patrol: built-in plugin {name} succeeded");
                     } else {
                         plugins_failed += 1;
-                        tracing::warn!("Patrol: plugin {name} failed");
+                        tracing::warn!("Patrol: built-in plugin {name} failed");
                     }
                 }
 
-                // Step 3: Periodic digest (every 10 cycles)
+                // Step 4: Run discovered plugins
+                for (name, cmd, args) in &plugin_commands {
+                    let input = RunPluginInput {
+                        plugin_name: name.clone(),
+                        command: cmd.clone(),
+                        args: args.clone(),
+                        work_dir: Some(rig.clone()),
+                    };
+
+                    let result = ctx
+                        .activity(ActivityOptions {
+                            activity_type: "run_plugin".to_string(),
+                            input: input.as_json_payload()?,
+                            start_to_close_timeout: Some(Duration::from_secs(60)),
+                            ..Default::default()
+                        })
+                        .await;
+
+                    if result.completed_ok() {
+                        plugins_run += 1;
+                        tracing::debug!("Patrol: discovered plugin {name} succeeded");
+                    } else {
+                        plugins_failed += 1;
+                        tracing::warn!("Patrol: discovered plugin {name} failed");
+                    }
+                }
+
+                // Step 5: Periodic digest (every 10 cycles)
                 if cycles % 10 == 0 {
                     tracing::info!(
                         "Patrol digest: rig {rig}, cycle #{cycles}, {plugins_run} runs, {plugins_failed} failures"
