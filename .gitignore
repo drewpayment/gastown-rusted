@@ -3,3 +3,4 @@
 .beads/
 .logs/
 target/
+.worktrees/
