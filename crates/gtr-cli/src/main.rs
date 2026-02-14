@@ -61,6 +61,10 @@ enum Command {
     #[command(subcommand)]
     Rig(commands::rig::RigCommand),
 
+    /// Manage crew workspaces (persistent developer workspaces)
+    #[command(subcommand)]
+    Crew(commands::crew::CrewCommand),
+
     /// Check system health
     Doctor,
 
@@ -122,6 +126,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Escalate(cmd) => commands::escalate::run(cmd).await,
         Command::Mq(cmd) => commands::mq::run(cmd).await,
         Command::Rig(cmd) => commands::rig::run(cmd).await,
+        Command::Crew(cmd) => commands::crew::run(cmd).await,
         Command::Agents(cmd) => commands::agents::run(cmd),
         Command::Mayor(cmd) => commands::mayor::run(cmd).await,
         Command::Doctor => commands::doctor::run().await,

@@ -1,5 +1,6 @@
 pub mod agents;
 pub mod convoy;
+pub mod crew;
 pub mod diagnostics;
 pub mod doctor;
 pub mod done;
