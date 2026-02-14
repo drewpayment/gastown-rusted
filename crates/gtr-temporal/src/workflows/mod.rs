@@ -4,6 +4,7 @@ pub mod convoy;
 pub mod formula;
 pub mod mayor;
 pub mod patrol;
+pub mod polecat;
 pub mod refinery;
 pub mod rig;
 pub mod witness;

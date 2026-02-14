@@ -198,3 +198,37 @@ pub struct RigState {
     pub has_witness: bool,
     pub has_refinery: bool,
 }
+
+// Polecat signal names
+pub const SIGNAL_POLECAT_HEARTBEAT: &str = "polecat_heartbeat";
+pub const SIGNAL_POLECAT_DONE: &str = "polecat_done";
+pub const SIGNAL_POLECAT_STUCK: &str = "polecat_stuck";
+pub const SIGNAL_POLECAT_KILL: &str = "polecat_kill";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolecatDoneSignal {
+    pub branch: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolecatState {
+    pub name: String,
+    pub rig: String,
+    pub work_item_id: String,
+    pub status: String,
+    pub branch: String,
+    pub worktree_path: String,
+}
+
+// Hook signal names
+pub const SIGNAL_HOOK: &str = "hook";
+pub const SIGNAL_HOOK_CLEAR: &str = "hook_clear";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HookSignal {
+    pub work_item_id: String,
+    pub title: String,
+    pub molecule_id: Option<String>,
+    pub current_step: Option<String>,
+}
