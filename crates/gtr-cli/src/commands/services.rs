@@ -47,7 +47,12 @@ pub async fn run_worker() -> anyhow::Result<()> {
     let worker_config = WorkerConfig::builder()
         .namespace("default")
         .task_queue("work")
-        .task_types(WorkerTaskTypes::workflow_only())
+        .task_types(WorkerTaskTypes {
+            enable_workflows: true,
+            enable_remote_activities: true,
+            enable_local_activities: false,
+            enable_nexus: false,
+        })
         .versioning_strategy(WorkerVersioningStrategy::None {
             build_id: format!("gtr-{}", env!("CARGO_PKG_VERSION")),
         })
@@ -68,6 +73,11 @@ pub async fn run_worker() -> anyhow::Result<()> {
     worker.register_wf(
         "agent_wf",
         gtr_temporal::workflows::agent::agent_wf,
+    );
+
+    worker.register_activity(
+        "spawn_agent",
+        gtr_temporal::activities::spawn_agent::spawn_agent,
     );
 
     tracing::info!("gtr worker started on task queue 'work'");
