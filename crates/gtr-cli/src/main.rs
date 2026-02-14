@@ -57,6 +57,10 @@ enum Command {
     #[command(subcommand)]
     Mq(commands::mq::MqCommand),
 
+    /// Manage polecats (ephemeral workers)
+    #[command(subcommand)]
+    Polecat(commands::polecat::PolecatCommand),
+
     /// Manage rigs (git repositories)
     #[command(subcommand)]
     Rig(commands::rig::RigCommand),
@@ -125,6 +129,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Done(cmd) => commands::done::run(cmd).await,
         Command::Escalate(cmd) => commands::escalate::run(cmd).await,
         Command::Mq(cmd) => commands::mq::run(cmd).await,
+        Command::Polecat(cmd) => commands::polecat::run(cmd).await,
         Command::Rig(cmd) => commands::rig::run(cmd).await,
         Command::Crew(cmd) => commands::crew::run(cmd).await,
         Command::Agents(cmd) => commands::agents::run(cmd),
