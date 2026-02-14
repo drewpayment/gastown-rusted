@@ -53,6 +53,10 @@ enum Command {
     /// Escalate a work item immediately
     Escalate(commands::escalate::EscalateCommand),
 
+    /// Molecule (running formula instance) management
+    #[command(subcommand)]
+    Mol(commands::mol::MolCommand),
+
     /// Merge queue management
     #[command(subcommand)]
     Mq(commands::mq::MqCommand),
@@ -134,6 +138,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Formula(cmd) => commands::formula::run(cmd).await,
         Command::Done(cmd) => commands::done::run(cmd).await,
         Command::Escalate(cmd) => commands::escalate::run(cmd).await,
+        Command::Mol(cmd) => commands::mol::run(cmd).await,
         Command::Mq(cmd) => commands::mq::run(cmd).await,
         Command::Polecat(cmd) => commands::polecat::run(cmd).await,
         Command::Rig(cmd) => commands::rig::run(cmd).await,

@@ -11,6 +11,7 @@ pub mod formula;
 pub mod hook;
 pub mod mail;
 pub mod mayor;
+pub mod mol;
 pub mod mq;
 pub mod polecat;
 pub mod prime;
