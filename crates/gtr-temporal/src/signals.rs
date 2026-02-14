@@ -10,6 +10,11 @@ pub const SIGNAL_RELEASE: &str = "release";
 pub const SIGNAL_HEARTBEAT: &str = "heartbeat";
 pub const SIGNAL_ESCALATE: &str = "escalate";
 
+// Convoy signal names
+pub const SIGNAL_ADD_WORK_ITEM: &str = "add_work_item";
+pub const SIGNAL_ITEM_DONE: &str = "item_done";
+pub const SIGNAL_CANCEL_CONVOY: &str = "cancel_convoy";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssignSignal {
     pub agent_id: String,
@@ -31,4 +36,24 @@ pub struct WorkItemState {
     pub title: String,
     pub status: String,
     pub assigned_to: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddWorkItemSignal {
+    pub work_item_id: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ItemDoneSignal {
+    pub work_item_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConvoyState {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+    pub work_items: Vec<String>,
+    pub completed_items: Vec<String>,
 }

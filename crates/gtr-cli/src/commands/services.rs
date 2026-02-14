@@ -61,6 +61,10 @@ pub async fn run_worker() -> anyhow::Result<()> {
         "work_item_wf",
         gtr_temporal::workflows::work_item::work_item_wf,
     );
+    worker.register_wf(
+        "convoy_wf",
+        gtr_temporal::workflows::convoy::convoy_wf,
+    );
 
     tracing::info!("gtr worker started on task queue 'work'");
     worker.run().await?;
