@@ -65,6 +65,47 @@ pub struct ConvoyState {
     pub completed_items: Vec<String>,
 }
 
+// Mayor signal names
+pub const SIGNAL_REGISTER_AGENT: &str = "register_agent";
+pub const SIGNAL_UNREGISTER_AGENT: &str = "unregister_agent";
+pub const SIGNAL_AGENT_STATUS_UPDATE: &str = "agent_status_update";
+pub const SIGNAL_CONVOY_CLOSED: &str = "convoy_closed";
+pub const SIGNAL_MAYOR_STOP: &str = "mayor_stop";
+
+// Mayor signal payloads
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegisterAgentSignal {
+    pub agent_id: String,
+    pub role: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentStatusUpdateSignal {
+    pub agent_id: String,
+    pub status: String,
+    pub current_work: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConvoyClosedSignal {
+    pub convoy_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MayorState {
+    pub active_convoys: Vec<String>,
+    pub agents: Vec<MayorAgentEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MayorAgentEntry {
+    pub agent_id: String,
+    pub role: String,
+    pub status: String,
+    pub current_work: Option<String>,
+}
+
 // Agent signal payloads
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
