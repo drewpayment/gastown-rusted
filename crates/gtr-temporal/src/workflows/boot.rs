@@ -74,7 +74,8 @@ pub async fn boot_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Erro
                 checks += 1;
                 tracing::info!("Boot health check #{checks}");
 
-                // Check all spawned agents are alive
+                let mut dead_agents: Vec<String> = vec![];
+
                 for agent_id in &spawned {
                     let input = HeartbeatInput {
                         agent_id: agent_id.clone(),
@@ -89,10 +90,41 @@ pub async fn boot_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Erro
                         })
                         .await;
 
+                    if !result.completed_ok() {
+                        tracing::warn!("Boot: {agent_id} appears dead — scheduling respawn");
+                        dead_agents.push(agent_id.clone());
+                    }
+                }
+
+                // Respawn dead agents
+                for agent_id in &dead_agents {
+                    tracing::info!("Boot: respawning {agent_id}");
+                    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+                    let respawn_input = SpawnAgentInput {
+                        agent_id: agent_id.clone(),
+                        runtime: "claude".to_string(),
+                        work_dir: format!("{home}/.gtr"),
+                        role: "mayor".to_string(), // TODO: track original role per agent
+                        rig: None,
+                        initial_prompt: Some(
+                            "You are being respawned after a crash. Run `gtr prime` to restore context.".to_string()
+                        ),
+                        env_extra: None,
+                    };
+
+                    let result = ctx
+                        .activity(ActivityOptions {
+                            activity_type: "spawn_agent".to_string(),
+                            input: respawn_input.as_json_payload()?,
+                            start_to_close_timeout: Some(Duration::from_secs(30)),
+                            ..Default::default()
+                        })
+                        .await;
+
                     if result.completed_ok() {
-                        tracing::debug!("Boot: {agent_id} health check passed");
+                        tracing::info!("Boot: respawned {agent_id}");
                     } else {
-                        tracing::warn!("Boot: {agent_id} health check failed");
+                        tracing::error!("Boot: failed to respawn {agent_id}");
                     }
                 }
             }
