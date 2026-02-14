@@ -115,7 +115,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Status => commands::status::run().await,
         Command::Services(cmd) => commands::services::run(cmd),
         Command::Workspace(cmd) => commands::workspace::run(cmd),
-        Command::Diagnostics(cmd) => commands::diagnostics::run(cmd),
+        Command::Diagnostics(cmd) => commands::diagnostics::run(cmd).await,
         Command::Worker(cmd) => commands::worker::run(cmd),
     }
 }
