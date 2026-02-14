@@ -55,6 +55,11 @@ pub async fn run(cmd: &RigCommand) -> anyhow::Result<()> {
     let client = crate::client::connect().await?;
     match cmd {
         RigCommand::Add { name, git_url } => {
+            // Create rig directory structure
+            gtr_core::dirs::ensure_rig_dirs(name)?;
+            println!("Created directory structure for rig '{name}'");
+
+            // Start rig workflow
             let input_payload = (name.as_str(), git_url.as_str()).as_json_payload()?;
             client
                 .start_workflow(
@@ -66,6 +71,20 @@ pub async fn run(cmd: &RigCommand) -> anyhow::Result<()> {
                     Default::default(),
                 )
                 .await?;
+            println!("Started rig workflow: rig-{name}");
+
+            // Signal rig to boot (spawn witness + refinery)
+            client
+                .signal_workflow_execution(
+                    format!("rig-{name}"),
+                    String::new(),
+                    "rig_boot".to_string(),
+                    None,
+                    None,
+                )
+                .await?;
+            println!("Booted rig '{name}' — witness + refinery will spawn");
+
             println!("Registered rig: {name} ({git_url})");
         }
         RigCommand::List => {
@@ -150,32 +169,16 @@ pub async fn run(cmd: &RigCommand) -> anyhow::Result<()> {
             println!("Undocked rig: {name}");
         }
         RigCommand::Boot { name } => {
-            let witness_input =
-                (format!("{name}-witness"), "witness").as_json_payload()?;
             client
-                .start_workflow(
-                    vec![witness_input],
-                    "work".to_string(),
-                    format!("{name}-witness"),
-                    "witness_wf".to_string(),
+                .signal_workflow_execution(
+                    format!("rig-{name}"),
+                    String::new(),
+                    "rig_boot".to_string(),
                     None,
-                    Default::default(),
+                    None,
                 )
                 .await?;
-
-            let refinery_input =
-                (format!("{name}-refinery"),).as_json_payload()?;
-            client
-                .start_workflow(
-                    vec![refinery_input],
-                    "work".to_string(),
-                    format!("{name}-refinery"),
-                    "refinery_wf".to_string(),
-                    None,
-                    Default::default(),
-                )
-                .await?;
-            println!("Booted rig {name}: witness + refinery started");
+            println!("Booted rig {name}: signaled to spawn witness + refinery");
         }
         RigCommand::Stop { name } => {
             client
