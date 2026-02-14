@@ -1,11 +1,12 @@
 mod client;
 mod commands;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 
 /// gtr — Gas Town Rusted CLI
 #[derive(Debug, Parser)]
-#[command(name = "gtr", version, about)]
+#[command(name = "gtr", version, about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -83,6 +84,15 @@ enum Command {
     /// Run a Temporal worker
     #[command(subcommand)]
     Worker(commands::worker::WorkerCommand),
+
+    /// Show version and build info
+    Version,
+
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        shell: Shell,
+    },
 }
 
 #[tokio::main]
@@ -117,5 +127,20 @@ async fn main() -> anyhow::Result<()> {
         Command::Workspace(cmd) => commands::workspace::run(cmd),
         Command::Diagnostics(cmd) => commands::diagnostics::run(cmd).await,
         Command::Worker(cmd) => commands::worker::run(cmd),
+        Command::Version => {
+            println!("gtr {} ({})", env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_NAME"));
+            println!("Rust edition: 2021");
+            println!("Temporal SDK: rev 7ecb7c0");
+            Ok(())
+        }
+        Command::Completions { shell } => {
+            clap_complete::generate(
+                *shell,
+                &mut Cli::command(),
+                "gtr",
+                &mut std::io::stdout(),
+            );
+            Ok(())
+        }
     }
 }

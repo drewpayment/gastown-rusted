@@ -11,6 +11,7 @@ path = "src/main.rs"
 gtr-core = { path = "../gtr-core" }
 gtr-temporal = { path = "../gtr-temporal" }
 clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
 anyhow = "1"
 toml = "0.8"
 tokio = { workspace = true }
