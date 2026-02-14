@@ -130,6 +130,12 @@ pub struct AgentNudgeSignal {
 pub struct MailEntry {
     pub from: String,
     pub message: String,
+    #[serde(default)]
+    pub read: bool,
+    #[serde(default)]
+    pub archived: bool,
+    #[serde(default)]
+    pub reply_to: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

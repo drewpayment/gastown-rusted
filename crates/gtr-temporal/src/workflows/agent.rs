@@ -74,6 +74,9 @@ pub async fn agent_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Err
                         inbox.push(MailEntry {
                             from: data.from,
                             message: data.message,
+                            read: false,
+                            archived: false,
+                            reply_to: None,
                         });
                     }
                 }
@@ -85,6 +88,9 @@ pub async fn agent_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Err
                         inbox.push(MailEntry {
                             from: data.from,
                             message: format!("[nudge] {}", data.message),
+                            read: false,
+                            archived: false,
+                            reply_to: None,
                         });
                     }
                 }
