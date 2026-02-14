@@ -17,6 +17,10 @@ pub enum GitOperation {
     Push { repo_path: String, remote: String, branch: String },
     #[serde(rename = "worktree_add")]
     WorktreeAdd { repo_path: String, path: String, branch: String },
+    #[serde(rename = "rebase")]
+    Rebase { repo_path: String, branch: String, onto: String },
+    #[serde(rename = "merge")]
+    Merge { repo_path: String, branch: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,6 +169,137 @@ fn run_git_op(op: GitOperation) -> Result<GitResult, ActivityError> {
                 message: format!("Created worktree at {path} on branch {branch}"),
             })
         }
+        GitOperation::Rebase {
+            repo_path,
+            branch,
+            onto,
+        } => {
+            tracing::info!("git rebase {branch} onto {onto} in {repo_path}");
+            let repo = open_repo(&repo_path)?;
+
+            let branch_ref = format!("refs/heads/{branch}");
+            let onto_ref = format!("refs/heads/{onto}");
+
+            let branch_annotated = repo
+                .find_annotated_commit(
+                    repo.revparse_single(&branch_ref)
+                        .map_err(git_err)?
+                        .id(),
+                )
+                .map_err(git_err)?;
+            let onto_annotated = repo
+                .find_annotated_commit(
+                    repo.revparse_single(&onto_ref)
+                        .map_err(git_err)?
+                        .id(),
+                )
+                .map_err(git_err)?;
+
+            let mut rebase = repo
+                .rebase(Some(&branch_annotated), Some(&onto_annotated), None, None)
+                .map_err(git_err)?;
+
+            let sig = repo.signature().unwrap_or_else(|_| {
+                git2::Signature::now("gtr", "gtr@gastownrusted.dev").unwrap()
+            });
+
+            // Apply each rebase operation
+            while rebase.next().is_some() {
+                if let Err(e) = rebase.commit(None, &sig, None) {
+                    rebase.abort().ok();
+                    return Err(ActivityError::NonRetryable(anyhow::anyhow!(
+                        "rebase conflict on {branch} onto {onto}: {e}"
+                    )));
+                }
+            }
+            rebase.finish(None).map_err(git_err)?;
+
+            Ok(GitResult {
+                op: "rebase".into(),
+                success: true,
+                message: format!("Rebased {branch} onto {onto}"),
+            })
+        }
+        GitOperation::Merge {
+            repo_path,
+            branch,
+        } => {
+            tracing::info!("git merge {branch} in {repo_path}");
+            let repo = open_repo(&repo_path)?;
+
+            // Resolve branch to annotated commit
+            let branch_ref = format!("refs/heads/{branch}");
+            let branch_oid = repo
+                .revparse_single(&branch_ref)
+                .map_err(git_err)?
+                .id();
+            let annotated = repo
+                .find_annotated_commit(branch_oid)
+                .map_err(git_err)?;
+
+            // Perform merge analysis
+            let (analysis, _) = repo.merge_analysis(&[&annotated]).map_err(git_err)?;
+
+            if analysis.is_up_to_date() {
+                return Ok(GitResult {
+                    op: "merge".into(),
+                    success: true,
+                    message: format!("{branch} already up to date"),
+                });
+            }
+
+            if analysis.is_fast_forward() {
+                // Fast-forward: just move HEAD
+                let mut reference = repo.find_reference("HEAD").map_err(git_err)?;
+                reference
+                    .set_target(branch_oid, &format!("merge: fast-forward {branch}"))
+                    .map_err(git_err)?;
+                repo.checkout_head(Some(
+                    git2::build::CheckoutBuilder::new().force(),
+                ))
+                .map_err(git_err)?;
+            } else {
+                // Normal merge
+                repo.merge(&[&annotated], None, None).map_err(git_err)?;
+
+                // Check for conflicts
+                let index = repo.index().map_err(git_err)?;
+                if index.has_conflicts() {
+                    repo.cleanup_state().map_err(git_err)?;
+                    return Err(ActivityError::NonRetryable(anyhow::anyhow!(
+                        "merge conflict merging {branch}"
+                    )));
+                }
+
+                // Commit the merge
+                let mut index = repo.index().map_err(git_err)?;
+                let tree_oid = index.write_tree().map_err(git_err)?;
+                let tree = repo.find_tree(tree_oid).map_err(git_err)?;
+                let sig = repo.signature().unwrap_or_else(|_| {
+                    git2::Signature::now("gtr", "gtr@gastownrusted.dev").unwrap()
+                });
+                let head_commit = repo.head().map_err(git_err)?.peel_to_commit().map_err(git_err)?;
+                let branch_commit = repo.find_commit(branch_oid).map_err(git_err)?;
+
+                repo.commit(
+                    Some("HEAD"),
+                    &sig,
+                    &sig,
+                    &format!("Merge branch '{branch}'"),
+                    &tree,
+                    &[&head_commit, &branch_commit],
+                )
+                .map_err(git_err)?;
+
+                repo.cleanup_state().map_err(git_err)?;
+            }
+
+            Ok(GitResult {
+                op: "merge".into(),
+                success: true,
+                message: format!("Merged {branch}"),
+            })
+        }
     }
 }
 
@@ -226,5 +361,41 @@ mod tests {
         };
         let json = serde_json::to_string(&op).unwrap();
         assert!(json.contains("\"op\":\"worktree_add\""));
+    }
+
+    #[test]
+    fn serde_rebase_op() {
+        let op = GitOperation::Rebase {
+            repo_path: "/repo".into(),
+            branch: "feature/x".into(),
+            onto: "main".into(),
+        };
+        let json = serde_json::to_string(&op).unwrap();
+        assert!(json.contains("\"op\":\"rebase\""));
+        let parsed: GitOperation = serde_json::from_str(&json).unwrap();
+        match parsed {
+            GitOperation::Rebase { branch, onto, .. } => {
+                assert_eq!(branch, "feature/x");
+                assert_eq!(onto, "main");
+            }
+            _ => panic!("expected Rebase"),
+        }
+    }
+
+    #[test]
+    fn serde_merge_op() {
+        let op = GitOperation::Merge {
+            repo_path: "/repo".into(),
+            branch: "feature/y".into(),
+        };
+        let json = serde_json::to_string(&op).unwrap();
+        assert!(json.contains("\"op\":\"merge\""));
+        let parsed: GitOperation = serde_json::from_str(&json).unwrap();
+        match parsed {
+            GitOperation::Merge { branch, .. } => {
+                assert_eq!(branch, "feature/y");
+            }
+            _ => panic!("expected Merge"),
+        }
     }
 }

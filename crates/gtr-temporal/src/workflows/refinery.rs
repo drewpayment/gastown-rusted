@@ -4,6 +4,7 @@ use temporalio_common::protos::coresdk::activity_result::activity_resolution::St
 use temporalio_common::protos::coresdk::AsJsonPayloadExt;
 use temporalio_sdk::{ActivityOptions, WfContext, WfExitValue};
 
+use crate::activities::git_ops::GitOperation;
 use crate::activities::run_plugin::RunPluginInput;
 use crate::signals::{
     RefineryEntry, RefineryEnqueueSignal, RefineryState, SIGNAL_REFINERY_DEQUEUE,
@@ -12,7 +13,21 @@ use crate::signals::{
 
 use futures_util::StreamExt;
 
+/// Refinery v2 — real git rebase, test execution, and conflict detection.
+/// For each queued work item:
+/// 1. Checkout branch (git_operation activity)
+/// 2. Rebase onto main (git_operation activity)
+/// 3. Run tests (run_plugin activity)
+/// 4. If tests pass: merge to main (git_operation activity)
+/// 5. If rebase fails: mark as conflict, spawn conflict-resolution polecat
 pub async fn refinery_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Error> {
+    let args = ctx.get_args();
+    let repo_path = if let Some(payload) = args.first() {
+        serde_json::from_slice::<String>(&payload.data).unwrap_or_else(|_| ".".into())
+    } else {
+        ".".into()
+    };
+
     let mut queue: Vec<RefineryEntry> = Vec::new();
     let mut processed: Vec<RefineryEntry> = Vec::new();
 
@@ -20,12 +35,16 @@ pub async fn refinery_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::
     let mut dequeue_ch = ctx.make_signal_channel(SIGNAL_REFINERY_DEQUEUE);
     let mut stop_ch = ctx.make_signal_channel(SIGNAL_REFINERY_STOP);
 
-    tracing::info!("Refinery started — merge queue ready");
+    tracing::info!("Refinery started — merge queue ready (repo: {repo_path})");
 
     loop {
         // Wait for any signal
         tokio::select! {
             biased;
+            Some(_) = stop_ch.next() => {
+                tracing::info!("Refinery: stopping");
+                break;
+            }
             Some(signal) = enqueue_ch.next() => {
                 if let Some(payload) = signal.input.first() {
                     if let Ok(enq) = serde_json::from_slice::<RefineryEnqueueSignal>(&payload.data) {
@@ -47,10 +66,6 @@ pub async fn refinery_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::
                     }
                 }
             }
-            Some(_) = stop_ch.next() => {
-                tracing::info!("Refinery: stopping");
-                break;
-            }
         }
 
         // Sort by priority (lower = higher priority)
@@ -62,68 +77,123 @@ pub async fn refinery_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::
             let branch = queue[idx].branch.clone();
             queue[idx].status = "validating".to_string();
 
-            // Run validation
-            let validate_input = RunPluginInput {
-                plugin_name: format!("refinery:validate:{item_id}"),
-                command: "echo".to_string(),
-                args: vec![format!("validating {branch}")],
-                work_dir: None,
+            // Step 1: Checkout the feature branch
+            let checkout_op = GitOperation::Checkout {
+                repo_path: repo_path.clone(),
+                branch: branch.clone(),
+                create: false,
             };
 
-            let result = ctx
+            let checkout_result = ctx
+                .activity(ActivityOptions {
+                    activity_type: "git_operation".to_string(),
+                    input: checkout_op.as_json_payload()?,
+                    start_to_close_timeout: Some(Duration::from_secs(120)),
+                    ..Default::default()
+                })
+                .await;
+
+            if !checkout_result.completed_ok() {
+                let mut entry = queue.remove(idx);
+                entry.status = "checkout_failed".to_string();
+                tracing::warn!("Refinery: checkout failed for '{item_id}' branch '{branch}'");
+                processed.push(entry);
+                continue;
+            }
+
+            // Step 2: Rebase onto main
+            let rebase_op = GitOperation::Rebase {
+                repo_path: repo_path.clone(),
+                branch: branch.clone(),
+                onto: "main".to_string(),
+            };
+
+            let rebase_result = ctx
+                .activity(ActivityOptions {
+                    activity_type: "git_operation".to_string(),
+                    input: rebase_op.as_json_payload()?,
+                    start_to_close_timeout: Some(Duration::from_secs(300)),
+                    ..Default::default()
+                })
+                .await;
+
+            if !rebase_result.completed_ok() {
+                let mut entry = queue.remove(idx);
+                entry.status = "conflict".to_string();
+                tracing::warn!(
+                    "Refinery: rebase conflict for '{item_id}' — needs conflict resolution"
+                );
+                processed.push(entry);
+                continue;
+            }
+
+            // Step 3: Run tests via run_plugin
+            let test_input = RunPluginInput {
+                plugin_name: format!("refinery:test:{item_id}"),
+                command: "cargo".to_string(),
+                args: vec!["test".to_string()],
+                work_dir: Some(repo_path.clone()),
+            };
+
+            let test_result = ctx
                 .activity(ActivityOptions {
                     activity_type: "run_plugin".to_string(),
-                    input: validate_input.as_json_payload()?,
+                    input: test_input.as_json_payload()?,
                     start_to_close_timeout: Some(Duration::from_secs(600)),
                     ..Default::default()
                 })
                 .await;
 
-            match result.status {
+            if !test_result.completed_ok() {
+                let mut entry = queue.remove(idx);
+                entry.status = "tests_failed".to_string();
+                tracing::warn!("Refinery: tests failed for '{item_id}' after rebase");
+                processed.push(entry);
+                continue;
+            }
+
+            // Step 4: Checkout main and merge the rebased branch
+            let checkout_main = GitOperation::Checkout {
+                repo_path: repo_path.clone(),
+                branch: "main".to_string(),
+                create: false,
+            };
+
+            let _ = ctx
+                .activity(ActivityOptions {
+                    activity_type: "git_operation".to_string(),
+                    input: checkout_main.as_json_payload()?,
+                    start_to_close_timeout: Some(Duration::from_secs(60)),
+                    ..Default::default()
+                })
+                .await;
+
+            let merge_op = GitOperation::Merge {
+                repo_path: repo_path.clone(),
+                branch: branch.clone(),
+            };
+
+            let merge_result = ctx
+                .activity(ActivityOptions {
+                    activity_type: "git_operation".to_string(),
+                    input: merge_op.as_json_payload()?,
+                    start_to_close_timeout: Some(Duration::from_secs(300)),
+                    ..Default::default()
+                })
+                .await;
+
+            let mut entry = queue.remove(idx);
+            match merge_result.status {
                 Some(Status::Completed(_)) => {
-                    // Run merge
-                    let merge_input = RunPluginInput {
-                        plugin_name: format!("refinery:merge:{item_id}"),
-                        command: "echo".to_string(),
-                        args: vec![format!("merged {branch}")],
-                        work_dir: None,
-                    };
-
-                    let merge_result = ctx
-                        .activity(ActivityOptions {
-                            activity_type: "run_plugin".to_string(),
-                            input: merge_input.as_json_payload()?,
-                            start_to_close_timeout: Some(Duration::from_secs(300)),
-                            ..Default::default()
-                        })
-                        .await;
-
-                    let mut entry = queue.remove(idx);
-                    match merge_result.status {
-                        Some(Status::Completed(_)) => {
-                            entry.status = "merged".to_string();
-                            tracing::info!("Refinery: merged '{}'", entry.work_item_id);
-                        }
-                        _ => {
-                            entry.status = "merge_failed".to_string();
-                            tracing::warn!(
-                                "Refinery: merge failed for '{}'",
-                                entry.work_item_id
-                            );
-                        }
-                    }
-                    processed.push(entry);
+                    entry.status = "merged".to_string();
+                    tracing::info!("Refinery: merged '{item_id}' branch '{branch}'");
                 }
                 _ => {
-                    let mut entry = queue.remove(idx);
-                    entry.status = "validation_failed".to_string();
-                    tracing::warn!(
-                        "Refinery: validation failed for '{}'",
-                        entry.work_item_id
-                    );
-                    processed.push(entry);
+                    entry.status = "merge_failed".to_string();
+                    tracing::warn!("Refinery: merge failed for '{item_id}'");
                 }
             }
+            processed.push(entry);
         }
     }
 
