@@ -1,5 +1,6 @@
 pub mod checkpoint;
 pub mod config;
+pub mod dirs;
 pub mod errors;
 pub mod formula;
 pub mod ids;
