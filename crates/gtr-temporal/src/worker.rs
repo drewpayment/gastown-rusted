@@ -61,6 +61,7 @@ pub async fn run_worker() -> Result<()> {
     worker.register_wf("refinery_wf", workflows::refinery::refinery_wf);
     worker.register_wf("witness_wf", workflows::witness::witness_wf);
     worker.register_wf("boot_wf", workflows::boot::boot_wf);
+    worker.register_wf("rig_wf", workflows::rig::rig_wf);
 
     // Activities
     worker.register_activity("spawn_agent", activities::spawn_agent::spawn_agent);

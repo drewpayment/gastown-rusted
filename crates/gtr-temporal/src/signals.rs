@@ -171,3 +171,30 @@ pub struct RefineryState {
     pub queue: Vec<RefineryEntry>,
     pub processed: Vec<RefineryEntry>,
 }
+
+// Rig signal names
+pub const SIGNAL_RIG_PARK: &str = "rig_park";
+pub const SIGNAL_RIG_UNPARK: &str = "rig_unpark";
+pub const SIGNAL_RIG_DOCK: &str = "rig_dock";
+pub const SIGNAL_RIG_UNDOCK: &str = "rig_undock";
+pub const SIGNAL_RIG_REGISTER_AGENT: &str = "rig_register_agent";
+pub const SIGNAL_RIG_UNREGISTER_AGENT: &str = "rig_unregister_agent";
+pub const SIGNAL_RIG_STOP: &str = "rig_stop";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RigAgentEntry {
+    pub agent_id: String,
+    pub role: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RigState {
+    pub name: String,
+    pub git_url: String,
+    pub status: String,
+    pub agents: Vec<RigAgentEntry>,
+    pub polecats: Vec<String>,
+    pub crew: Vec<String>,
+    pub has_witness: bool,
+    pub has_refinery: bool,
+}

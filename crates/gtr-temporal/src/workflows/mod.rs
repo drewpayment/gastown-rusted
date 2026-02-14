@@ -5,5 +5,6 @@ pub mod formula;
 pub mod mayor;
 pub mod patrol;
 pub mod refinery;
+pub mod rig;
 pub mod witness;
 pub mod work_item;
