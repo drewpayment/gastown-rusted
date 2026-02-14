@@ -85,7 +85,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Sling(cmd) => commands::sling::run(cmd).await,
         Command::Unsling(cmd) => commands::unsling::run(cmd).await,
         Command::Hook(cmd) => commands::hook::run(cmd).await,
-        Command::Mail(cmd) => commands::mail::run(cmd),
+        Command::Mail(cmd) => commands::mail::run(cmd).await,
         Command::Agents(cmd) => commands::agents::run(cmd),
         Command::Mayor(cmd) => commands::mayor::run(cmd).await,
         Command::Up => commands::up::run().await,
