@@ -3,6 +3,7 @@ pub mod convoy;
 pub mod diagnostics;
 pub mod done;
 pub mod down;
+pub mod escalate;
 pub mod formula;
 pub mod hook;
 pub mod mail;

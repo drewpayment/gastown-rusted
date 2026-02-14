@@ -107,6 +107,10 @@ pub async fn run_worker() -> anyhow::Result<()> {
         "git_operation",
         gtr_temporal::activities::git_ops::git_operation,
     );
+    worker.register_activity(
+        "send_notification",
+        gtr_temporal::activities::notification::send_notification,
+    );
 
     tracing::info!("gtr worker started on task queue 'work'");
     worker.run().await?;

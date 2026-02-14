@@ -49,6 +49,9 @@ enum Command {
     /// Mark work as done and enqueue for merge
     Done(commands::done::DoneCommand),
 
+    /// Escalate a work item immediately
+    Escalate(commands::escalate::EscalateCommand),
+
     /// Merge queue management
     #[command(subcommand)]
     Mq(commands::mq::MqCommand),
@@ -99,6 +102,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Mail(cmd) => commands::mail::run(cmd).await,
         Command::Formula(cmd) => commands::formula::run(cmd).await,
         Command::Done(cmd) => commands::done::run(cmd).await,
+        Command::Escalate(cmd) => commands::escalate::run(cmd).await,
         Command::Mq(cmd) => commands::mq::run(cmd).await,
         Command::Agents(cmd) => commands::agents::run(cmd),
         Command::Mayor(cmd) => commands::mayor::run(cmd).await,
