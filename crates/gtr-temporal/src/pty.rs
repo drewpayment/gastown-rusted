@@ -240,6 +240,28 @@ pub fn spawn_with_server(
     Ok(pid)
 }
 
+/// Kill an agent's subprocess and clean up its runtime directory.
+pub fn kill_agent(agent_id: &str) -> anyhow::Result<bool> {
+    if let Some(pid) = read_pid(agent_id) {
+        // Send SIGTERM first
+        nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGTERM).ok();
+
+        // Wait briefly for graceful shutdown
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        // Force kill if still alive
+        if nix::sys::signal::kill(pid, None).is_ok() {
+            nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGKILL).ok();
+        }
+
+        cleanup(agent_id)?;
+        Ok(true)
+    } else {
+        cleanup(agent_id)?;
+        Ok(false)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
