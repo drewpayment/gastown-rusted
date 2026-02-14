@@ -28,16 +28,33 @@ pub async fn send_notification(
         input.message,
     );
 
-    // Stub: just log. Real implementation would dispatch to email/SMS/webhook providers.
     match input.channel.as_str() {
         "email" => {
+            // Stub: log only. Real implementation would use an email provider (SES, SendGrid, etc.)
             tracing::info!("Would send email to {}: {}", input.target, input.subject);
         }
         "sms" => {
+            // Stub: log only. Real implementation would use Twilio or similar.
             tracing::info!("Would send SMS to {}: {}", input.target, input.message);
         }
         "webhook" => {
-            tracing::info!("Would POST to webhook {}", input.target);
+            let url = &input.target;
+            let body = serde_json::json!({
+                "subject": input.subject,
+                "message": input.message,
+                "channel": input.channel,
+            });
+            let client = reqwest::Client::new();
+            let resp = client
+                .post(url)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| ActivityError::Retryable {
+                    source: anyhow::anyhow!("webhook failed: {e}"),
+                    explicit_delay: None,
+                })?;
+            tracing::info!("Notification webhook to {url}: {}", resp.status());
         }
         "signal" => {
             tracing::info!("Would signal workflow {}", input.target);
