@@ -34,6 +34,10 @@ enum Command {
     #[command(subcommand)]
     Mail(commands::mail::MailCommand),
 
+    /// Execute formulas (multi-step recipes)
+    #[command(subcommand)]
+    Formula(commands::formula::FormulaCommand),
+
     /// Manage agents
     #[command(subcommand)]
     Agents(commands::agents::AgentsCommand),
@@ -86,6 +90,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Unsling(cmd) => commands::unsling::run(cmd).await,
         Command::Hook(cmd) => commands::hook::run(cmd).await,
         Command::Mail(cmd) => commands::mail::run(cmd).await,
+        Command::Formula(cmd) => commands::formula::run(cmd).await,
         Command::Agents(cmd) => commands::agents::run(cmd),
         Command::Mayor(cmd) => commands::mayor::run(cmd).await,
         Command::Up => commands::up::run().await,

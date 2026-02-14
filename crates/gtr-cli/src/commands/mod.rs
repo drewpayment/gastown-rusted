@@ -2,6 +2,7 @@ pub mod agents;
 pub mod convoy;
 pub mod diagnostics;
 pub mod down;
+pub mod formula;
 pub mod hook;
 pub mod mail;
 pub mod mayor;

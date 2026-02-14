@@ -82,6 +82,10 @@ pub async fn run_worker() -> anyhow::Result<()> {
         "patrol_wf",
         gtr_temporal::workflows::patrol::patrol_wf,
     );
+    worker.register_wf(
+        "formula_wf",
+        gtr_temporal::workflows::formula::formula_wf,
+    );
 
     worker.register_activity(
         "spawn_agent",
