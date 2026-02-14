@@ -140,3 +140,34 @@ pub struct AgentState {
     pub current_work: Option<String>,
     pub inbox: Vec<MailEntry>,
 }
+
+// Refinery signal names
+pub const SIGNAL_REFINERY_ENQUEUE: &str = "refinery_enqueue";
+pub const SIGNAL_REFINERY_DEQUEUE: &str = "refinery_dequeue";
+pub const SIGNAL_REFINERY_STOP: &str = "refinery_stop";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefineryEnqueueSignal {
+    pub work_item_id: String,
+    pub branch: String,
+    pub priority: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefineryDequeueSignal {
+    pub work_item_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefineryEntry {
+    pub work_item_id: String,
+    pub branch: String,
+    pub priority: u8,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefineryState {
+    pub queue: Vec<RefineryEntry>,
+    pub processed: Vec<RefineryEntry>,
+}

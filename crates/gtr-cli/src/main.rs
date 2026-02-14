@@ -46,6 +46,13 @@ enum Command {
     #[command(subcommand)]
     Mayor(commands::mayor::MayorCommand),
 
+    /// Mark work as done and enqueue for merge
+    Done(commands::done::DoneCommand),
+
+    /// Merge queue management
+    #[command(subcommand)]
+    Mq(commands::mq::MqCommand),
+
     /// Start Gas Town (launch mayor workflow)
     Up,
 
@@ -91,6 +98,8 @@ async fn main() -> anyhow::Result<()> {
         Command::Hook(cmd) => commands::hook::run(cmd).await,
         Command::Mail(cmd) => commands::mail::run(cmd).await,
         Command::Formula(cmd) => commands::formula::run(cmd).await,
+        Command::Done(cmd) => commands::done::run(cmd).await,
+        Command::Mq(cmd) => commands::mq::run(cmd).await,
         Command::Agents(cmd) => commands::agents::run(cmd),
         Command::Mayor(cmd) => commands::mayor::run(cmd).await,
         Command::Up => commands::up::run().await,

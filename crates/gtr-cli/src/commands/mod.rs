@@ -1,11 +1,13 @@
 pub mod agents;
 pub mod convoy;
 pub mod diagnostics;
+pub mod done;
 pub mod down;
 pub mod formula;
 pub mod hook;
 pub mod mail;
 pub mod mayor;
+pub mod mq;
 pub mod services;
 pub mod sling;
 pub mod status;
