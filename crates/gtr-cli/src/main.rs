@@ -24,6 +24,12 @@ enum Command {
     /// Assign work to an agent
     Sling(commands::sling::SlingCommand),
 
+    /// Unassign work from an agent
+    Unsling(commands::unsling::UnslingCommand),
+
+    /// Query agent's current work
+    Hook(commands::hook::HookCommand),
+
     /// Agent messaging system
     #[command(subcommand)]
     Mail(commands::mail::MailCommand),
@@ -63,7 +69,9 @@ async fn main() -> anyhow::Result<()> {
     match &cli.command {
         Command::Convoy(cmd) => commands::convoy::run(cmd).await,
         Command::Work(cmd) => commands::work::run(cmd).await,
-        Command::Sling(cmd) => commands::sling::run(cmd),
+        Command::Sling(cmd) => commands::sling::run(cmd).await,
+        Command::Unsling(cmd) => commands::unsling::run(cmd).await,
+        Command::Hook(cmd) => commands::hook::run(cmd).await,
         Command::Mail(cmd) => commands::mail::run(cmd),
         Command::Agents(cmd) => commands::agents::run(cmd),
         Command::Services(cmd) => commands::services::run(cmd),

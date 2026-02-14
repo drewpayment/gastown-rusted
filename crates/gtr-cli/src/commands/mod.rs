@@ -1,9 +1,11 @@
 pub mod agents;
 pub mod convoy;
 pub mod diagnostics;
+pub mod hook;
 pub mod mail;
 pub mod services;
 pub mod sling;
+pub mod unsling;
 pub mod work;
 pub mod worker;
 pub mod workspace;
