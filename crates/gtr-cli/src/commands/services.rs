@@ -79,6 +79,10 @@ pub async fn run_worker() -> anyhow::Result<()> {
         "spawn_agent",
         gtr_temporal::activities::spawn_agent::spawn_agent,
     );
+    worker.register_activity(
+        "read_agent_output",
+        gtr_temporal::activities::agent_io::read_agent_output,
+    );
 
     tracing::info!("gtr worker started on task queue 'work'");
     worker.run().await?;
