@@ -69,6 +69,12 @@ enum Command {
     #[command(subcommand)]
     Crew(commands::crew::CrewCommand),
 
+    /// Inject context for a new agent session
+    Prime(commands::prime::PrimeCommand),
+
+    /// Save context for the next session
+    Handoff(commands::handoff::HandoffCommand),
+
     /// Check system health
     Doctor,
 
@@ -132,6 +138,8 @@ async fn main() -> anyhow::Result<()> {
         Command::Polecat(cmd) => commands::polecat::run(cmd).await,
         Command::Rig(cmd) => commands::rig::run(cmd).await,
         Command::Crew(cmd) => commands::crew::run(cmd).await,
+        Command::Prime(cmd) => commands::prime::run(cmd).await,
+        Command::Handoff(cmd) => commands::handoff::run(cmd).await,
         Command::Agents(cmd) => commands::agents::run(cmd),
         Command::Mayor(cmd) => commands::mayor::run(cmd).await,
         Command::Doctor => commands::doctor::run().await,
