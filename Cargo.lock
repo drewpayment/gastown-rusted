@@ -788,6 +788,7 @@ dependencies = [
  "crossterm",
  "gtr-core",
  "gtr-temporal",
+ "nix",
  "prost-wkt-types",
  "temporalio-common",
  "temporalio-sdk",

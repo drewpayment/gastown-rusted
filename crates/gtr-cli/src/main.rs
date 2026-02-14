@@ -14,6 +14,12 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Attach to a live agent session (interactive Claude Code)
+    Attach(commands::attach::AttachCommand),
+
+    /// Send a message to an agent (async via Temporal signal)
+    Chat(commands::chat::ChatCommand),
+
     /// Manage convoys (batches of work)
     #[command(subcommand)]
     Convoy(commands::convoy::ConvoyCommand),
@@ -148,6 +154,8 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
+        Command::Attach(cmd) => commands::attach::run(&cmd).await,
+        Command::Chat(cmd) => commands::chat::run(&cmd).await,
         Command::Convoy(cmd) => commands::convoy::run(cmd).await,
         Command::Work(cmd) => commands::work::run(cmd).await,
         Command::Sling(cmd) => commands::sling::run(cmd).await,

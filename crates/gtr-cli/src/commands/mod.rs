@@ -1,4 +1,6 @@
 pub mod agents;
+pub mod attach;
+pub mod chat;
 pub mod checkpoint;
 pub mod convoy;
 pub mod crew;
