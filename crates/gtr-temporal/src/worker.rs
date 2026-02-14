@@ -8,7 +8,7 @@ use temporalio_common::{
 use temporalio_sdk::{sdk_client_options, Worker};
 use temporalio_sdk_core::{init_worker, CoreRuntime, RuntimeOptions, Url};
 
-use crate::workflows::work_item_wf;
+use crate::workflows::work_item::work_item_wf;
 
 const DEFAULT_TASK_QUEUE: &str = "gtr-task-queue";
 const DEFAULT_NAMESPACE: &str = "default";
