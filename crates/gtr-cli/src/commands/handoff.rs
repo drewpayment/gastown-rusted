@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use clap::Args;
 use temporalio_common::protos::coresdk::AsJsonPayloadExt;
 use temporalio_sdk_core::WorkflowClientTrait;
@@ -23,7 +25,23 @@ pub async fn run(cmd: &HandoffCommand) -> anyhow::Result<()> {
 
     let client = crate::client::connect().await?;
 
-    // Send a mail to self with handoff content
+    // Step 1: Create checkpoint in current directory
+    let checkpoint = gtr_core::checkpoint::Checkpoint {
+        molecule_id: None,
+        current_step: None,
+        step_title: Some("handoff".to_string()),
+        modified_files: vec![],
+        last_commit: None,
+        branch: None,
+        hooked_work: std::env::var("GTR_WORK_ITEM").ok(),
+        timestamp: chrono::Utc::now(),
+        session_id: Some(agent_id.clone()),
+        notes: Some(cmd.message.clone()),
+    };
+    checkpoint.write(Path::new("."))?;
+    println!("Checkpoint saved to .gtr-checkpoint.json");
+
+    // Step 2: Send handoff mail to self
     let mail = AgentMailSignal {
         from: format!("{agent_id} (handoff)"),
         message: format!("[HANDOFF] {}", cmd.message),
