@@ -2,6 +2,7 @@ pub mod config;
 pub mod errors;
 pub mod formula;
 pub mod ids;
+pub mod namepool;
 pub mod plugin;
 pub mod state;
 pub mod types;
