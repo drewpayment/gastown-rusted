@@ -1,3 +1,4 @@
+mod client;
 mod commands;
 
 use clap::{Parser, Subcommand};
@@ -61,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
 
     match &cli.command {
         Command::Convoy(cmd) => commands::convoy::run(cmd),
-        Command::Work(cmd) => commands::work::run(cmd),
+        Command::Work(cmd) => commands::work::run(cmd).await,
         Command::Sling(cmd) => commands::sling::run(cmd),
         Command::Mail(cmd) => commands::mail::run(cmd),
         Command::Agents(cmd) => commands::agents::run(cmd),

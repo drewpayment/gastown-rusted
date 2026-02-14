@@ -725,9 +725,11 @@ name = "gtr-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "gtr-core",
  "gtr-temporal",
+ "prost-wkt-types",
  "temporalio-common",
  "temporalio-sdk",
  "temporalio-sdk-core",
