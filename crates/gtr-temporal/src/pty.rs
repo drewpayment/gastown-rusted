@@ -1,9 +1,13 @@
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::os::unix::io::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 
 use nix::pty::{openpty, Winsize};
+use nix::sys::socket::{
+    recvmsg, sendmsg, ControlMessage, ControlMessageOwned, MsgFlags,
+};
 use nix::unistd::{close, dup2, execvp, fork, setsid, ForkResult, Pid};
 
 /// Runtime directory for a single agent's PTY session.
@@ -127,6 +131,113 @@ pub fn spawn(
             unreachable!()
         }
     }
+}
+
+/// Start a Unix socket server that passes the PTY master fd to connecting clients.
+/// This function blocks — run it in a dedicated thread.
+pub fn serve_pty(agent_id: &str, master_fd: RawFd) -> anyhow::Result<()> {
+    let sock_path = socket_path(agent_id);
+    // Remove stale socket if it exists
+    if sock_path.exists() {
+        std::fs::remove_file(&sock_path)?;
+    }
+
+    let listener = UnixListener::bind(&sock_path)?;
+    // Set socket permissions to owner-only
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&sock_path, std::fs::Permissions::from_mode(0o600))?;
+    }
+
+    tracing::info!("PTY server listening on {}", sock_path.display());
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                if let Err(e) = send_fd(&stream, master_fd) {
+                    tracing::warn!("Failed to send PTY fd to client: {e}");
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Accept failed: {e}");
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Send a file descriptor over a Unix socket using SCM_RIGHTS.
+fn send_fd(stream: &UnixStream, fd: RawFd) -> nix::Result<()> {
+    let fds = [fd];
+    let cmsg = [ControlMessage::ScmRights(&fds)];
+    let iov = [std::io::IoSlice::new(b"P")]; // "P" for PTY
+
+    sendmsg::<()>(stream.as_raw_fd(), &iov, &cmsg, MsgFlags::empty(), None)?;
+    Ok(())
+}
+
+/// Receive a file descriptor from a Unix socket using SCM_RIGHTS.
+pub fn recv_fd(stream: &UnixStream) -> nix::Result<RawFd> {
+    let mut buf = [0u8; 1];
+    let mut iov = [std::io::IoSliceMut::new(&mut buf)];
+    let mut cmsgspace = nix::cmsg_space!([RawFd; 1]);
+
+    let msg = recvmsg::<()>(
+        stream.as_raw_fd(),
+        &mut iov,
+        Some(&mut cmsgspace),
+        MsgFlags::empty(),
+    )?;
+
+    for cmsg in msg.cmsgs()? {
+        if let ControlMessageOwned::ScmRights(fds) = cmsg {
+            if let Some(&fd) = fds.first() {
+                return Ok(fd);
+            }
+        }
+    }
+
+    Err(nix::Error::EINVAL)
+}
+
+/// Connect to an agent's PTY socket and receive the master fd.
+pub fn connect_pty(agent_id: &str) -> anyhow::Result<RawFd> {
+    let sock_path = socket_path(agent_id);
+    if !sock_path.exists() {
+        anyhow::bail!("No PTY session for agent '{agent_id}' — is it running?");
+    }
+    let stream = UnixStream::connect(&sock_path)?;
+    let fd = recv_fd(&stream)?;
+    Ok(fd)
+}
+
+/// Spawn a process with PTY and start the socket server in a background thread.
+/// This is the main entry point for launching an agent.
+pub fn spawn_with_server(
+    agent_id: &str,
+    program: &str,
+    args: &[String],
+    work_dir: &Path,
+    env_vars: &HashMap<String, String>,
+) -> anyhow::Result<Pid> {
+    let (pid, master_fd) = spawn(agent_id, program, args, work_dir, env_vars)?;
+    let master_raw = master_fd.as_raw_fd();
+
+    // Leak the OwnedFd so it stays open for the lifetime of the server thread.
+    // The fd will be closed when the process exits.
+    std::mem::forget(master_fd);
+
+    let agent_id_owned = agent_id.to_string();
+    std::thread::spawn(move || {
+        if let Err(e) = serve_pty(&agent_id_owned, master_raw) {
+            tracing::error!("PTY server for '{}' exited: {e}", agent_id_owned);
+        }
+    });
+
+    Ok(pid)
 }
 
 #[cfg(test)]
