@@ -756,6 +756,7 @@ name = "gtr-temporal"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "futures-util",
  "gtr-core",
  "serde",
  "serde_json",
