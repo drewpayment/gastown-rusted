@@ -56,6 +56,9 @@ enum Command {
     #[command(subcommand)]
     Mq(commands::mq::MqCommand),
 
+    /// Check system health
+    Doctor,
+
     /// Start Gas Town (launch mayor workflow)
     Up,
 
@@ -106,6 +109,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Mq(cmd) => commands::mq::run(cmd).await,
         Command::Agents(cmd) => commands::agents::run(cmd),
         Command::Mayor(cmd) => commands::mayor::run(cmd).await,
+        Command::Doctor => commands::doctor::run().await,
         Command::Up => commands::up::run().await,
         Command::Down => commands::down::run().await,
         Command::Status => commands::status::run().await,
