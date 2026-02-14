@@ -38,6 +38,19 @@ enum Command {
     #[command(subcommand)]
     Agents(commands::agents::AgentsCommand),
 
+    /// Mayor workflow management
+    #[command(subcommand)]
+    Mayor(commands::mayor::MayorCommand),
+
+    /// Start Gas Town (launch mayor workflow)
+    Up,
+
+    /// Stop Gas Town (stop mayor workflow)
+    Down,
+
+    /// Show Gas Town status
+    Status,
+
     /// Manage services
     #[command(subcommand)]
     Services(commands::services::ServicesCommand),
@@ -74,6 +87,10 @@ async fn main() -> anyhow::Result<()> {
         Command::Hook(cmd) => commands::hook::run(cmd).await,
         Command::Mail(cmd) => commands::mail::run(cmd),
         Command::Agents(cmd) => commands::agents::run(cmd),
+        Command::Mayor(cmd) => commands::mayor::run(cmd).await,
+        Command::Up => commands::up::run().await,
+        Command::Down => commands::down::run().await,
+        Command::Status => commands::status::run().await,
         Command::Services(cmd) => commands::services::run(cmd),
         Command::Workspace(cmd) => commands::workspace::run(cmd),
         Command::Diagnostics(cmd) => commands::diagnostics::run(cmd),
