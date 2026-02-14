@@ -100,7 +100,7 @@ async fn handle_show(id: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn workflow_status_str(status: i32) -> &'static str {
+pub fn workflow_status_str(status: i32) -> &'static str {
     match status {
         0 => "Unspecified",
         1 => "Running",

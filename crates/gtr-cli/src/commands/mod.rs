@@ -10,6 +10,7 @@ pub mod hook;
 pub mod mail;
 pub mod mayor;
 pub mod mq;
+pub mod rig;
 pub mod services;
 pub mod sling;
 pub mod status;

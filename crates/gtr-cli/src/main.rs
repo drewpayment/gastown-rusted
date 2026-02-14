@@ -57,6 +57,10 @@ enum Command {
     #[command(subcommand)]
     Mq(commands::mq::MqCommand),
 
+    /// Manage rigs (git repositories)
+    #[command(subcommand)]
+    Rig(commands::rig::RigCommand),
+
     /// Check system health
     Doctor,
 
@@ -117,6 +121,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Done(cmd) => commands::done::run(cmd).await,
         Command::Escalate(cmd) => commands::escalate::run(cmd).await,
         Command::Mq(cmd) => commands::mq::run(cmd).await,
+        Command::Rig(cmd) => commands::rig::run(cmd).await,
         Command::Agents(cmd) => commands::agents::run(cmd),
         Command::Mayor(cmd) => commands::mayor::run(cmd).await,
         Command::Doctor => commands::doctor::run().await,
