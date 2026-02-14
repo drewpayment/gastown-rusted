@@ -187,6 +187,7 @@ pub const SIGNAL_RIG_DOCK: &str = "rig_dock";
 pub const SIGNAL_RIG_UNDOCK: &str = "rig_undock";
 pub const SIGNAL_RIG_REGISTER_AGENT: &str = "rig_register_agent";
 pub const SIGNAL_RIG_UNREGISTER_AGENT: &str = "rig_unregister_agent";
+pub const SIGNAL_RIG_BOOT: &str = "rig_boot";
 pub const SIGNAL_RIG_STOP: &str = "rig_stop";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

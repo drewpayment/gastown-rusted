@@ -1,6 +1,10 @@
-use futures_util::StreamExt;
-use temporalio_sdk::{WfContext, WfExitValue};
+use std::time::Duration;
 
+use futures_util::StreamExt;
+use temporalio_common::protos::coresdk::AsJsonPayloadExt;
+use temporalio_sdk::{ActivityOptions, WfContext, WfExitValue};
+
+use crate::activities::spawn_agent::SpawnAgentInput;
 use crate::signals::*;
 
 /// Rig workflow — manages a registered git repository's lifecycle.
@@ -27,6 +31,7 @@ pub async fn rig_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Error
     let mut undock_ch = ctx.make_signal_channel(SIGNAL_RIG_UNDOCK);
     let mut reg_ch = ctx.make_signal_channel(SIGNAL_RIG_REGISTER_AGENT);
     let mut unreg_ch = ctx.make_signal_channel(SIGNAL_RIG_UNREGISTER_AGENT);
+    let mut boot_ch = ctx.make_signal_channel(SIGNAL_RIG_BOOT);
     let mut stop_ch = ctx.make_signal_channel(SIGNAL_RIG_STOP);
 
     tracing::info!("Rig {name} started — operational ({git_url})");
@@ -34,6 +39,74 @@ pub async fn rig_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Error
     loop {
         tokio::select! {
             biased;
+            Some(_) = boot_ch.next() => {
+                if status == "operational" {
+                    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+
+                    // Spawn witness
+                    if !has_witness {
+                        let witness_input = SpawnAgentInput {
+                            agent_id: format!("{name}-witness"),
+                            runtime: "claude".to_string(),
+                            work_dir: format!("{home}/.gtr/rigs/{name}/witness"),
+                            role: "witness".to_string(),
+                            rig: Some(name.clone()),
+                            initial_prompt: Some(format!(
+                                "You are the Witness for rig '{name}'. Monitor polecats and report issues.\n\
+                                 1. `gtr feed` — watch system status\n\
+                                 2. Report stuck polecats to mayor via `gtr mail send mayor`"
+                            )),
+                            env_extra: None,
+                        };
+
+                        let result = ctx
+                            .activity(ActivityOptions {
+                                activity_type: "spawn_agent".to_string(),
+                                input: witness_input.as_json_payload()?,
+                                start_to_close_timeout: Some(Duration::from_secs(30)),
+                                ..Default::default()
+                            })
+                            .await;
+
+                        if result.completed_ok() {
+                            has_witness = true;
+                            tracing::info!("Rig {name}: spawned witness");
+                        }
+                    }
+
+                    // Spawn refinery
+                    if !has_refinery {
+                        let refinery_input = SpawnAgentInput {
+                            agent_id: format!("{name}-refinery"),
+                            runtime: "claude".to_string(),
+                            work_dir: format!("{home}/.gtr/rigs/{name}/refinery"),
+                            role: "refinery".to_string(),
+                            rig: Some(name.clone()),
+                            initial_prompt: Some(format!(
+                                "You are the Refinery for rig '{name}'. Process the merge queue.\n\
+                                 Check for enqueued branches and merge them."
+                            )),
+                            env_extra: None,
+                        };
+
+                        let result = ctx
+                            .activity(ActivityOptions {
+                                activity_type: "spawn_agent".to_string(),
+                                input: refinery_input.as_json_payload()?,
+                                start_to_close_timeout: Some(Duration::from_secs(30)),
+                                ..Default::default()
+                            })
+                            .await;
+
+                        if result.completed_ok() {
+                            has_refinery = true;
+                            tracing::info!("Rig {name}: spawned refinery");
+                        }
+                    }
+
+                    tracing::info!("Rig {name}: bootstrap complete");
+                }
+            }
             Some(_) = stop_ch.next() => {
                 tracing::info!("Rig {name} stopped");
                 return Ok(WfExitValue::Normal(serde_json::to_string(&RigState {
