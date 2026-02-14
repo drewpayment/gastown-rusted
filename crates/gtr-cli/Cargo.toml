@@ -22,3 +22,4 @@ temporalio-sdk-core = { workspace = true }
 temporalio-common = { git = "https://github.com/temporalio/sdk-core", rev = "7ecb7c0" }
 prost-wkt-types = "0.7"
 chrono = "0.4"
+crossterm = "0.28"

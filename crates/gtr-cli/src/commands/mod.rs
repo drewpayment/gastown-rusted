@@ -7,6 +7,7 @@ pub mod dog;
 pub mod done;
 pub mod down;
 pub mod escalate;
+pub mod feed;
 pub mod handoff;
 pub mod formula;
 pub mod gate;

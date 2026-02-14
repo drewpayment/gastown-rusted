@@ -87,6 +87,9 @@ enum Command {
     /// Save context for the next session
     Handoff(commands::handoff::HandoffCommand),
 
+    /// Real-time activity dashboard
+    Feed(commands::feed::FeedCommand),
+
     /// Check system health
     Doctor,
 
@@ -157,6 +160,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Handoff(cmd) => commands::handoff::run(cmd).await,
         Command::Agents(cmd) => commands::agents::run(cmd),
         Command::Mayor(cmd) => commands::mayor::run(cmd).await,
+        Command::Feed(cmd) => commands::feed::run(cmd).await,
         Command::Doctor => commands::doctor::run().await,
         Command::Up => commands::up::run().await,
         Command::Down => commands::down::run().await,
