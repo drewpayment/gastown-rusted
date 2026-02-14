@@ -1,0 +1,72 @@
+services:
+  gtr-temporal-pgsql:
+    container_name: gtr-temporal-pgsql
+    environment:
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_USER: temporal 
+      POSTGRES_DB: temporal 
+    image: postgres:15-alpine
+    ports:
+      - 5432:5432
+    volumes: 
+      - gtr-temporal-pgsql:/var/lib/postgresql/data
+  
+  gtr-temporal-elasticsearch:
+    container_name: gtr-temporal-elasticsearch
+    environment:
+      - cluster.routing.allocation.disk.threshold_enabled=true
+      - cluster.routing.allocation.disk.watermark.low=512mb
+      - cluster.routing.allocation.disk.watermark.high=256mb
+      - cluster.routing.allocation.disk.watermark.flood_stage=128mb
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms256m -Xmx256m
+      - xpack.security.enabled=false
+    image: elasticsearch:7.16.2
+    ports:
+      - 9200:9200
+    volumes:
+      - gtr-temporal-elasticsearch:/usr/share/elasticsearch/data
+      
+  gtr-temporal-server:
+    container_name: gtr-temporal-server
+    depends_on:
+      - gtr-temporal-pgsql
+      - gtr-temporal-elasticsearch
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=gtr-temporal-pgsql
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+      - ENABLE_ES=true
+      - ES_SEEDS=gtr-temporal-elasticsearch
+      - ES_VERSION=v7
+    image: temporalio/auto-setup:1.25.1
+    ports:
+      - 7233:7233
+      - 8233:8233
+    volumes:
+      - ./infrastructure/temporal/dynamicconfig:/etc/temporal/config/dynamicconfig
+    healthcheck:
+      test: ["CMD", "temporal", "--address", "gtr-temporal-server:7233", "workflow", "list", "--namespace", "default", "--limit", "1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+      
+  gtr-temporal-ui:
+    container_name: gtr-temporal-ui
+    depends_on:
+      gtr-temporal-server:
+        condition: service_healthy
+    environment:
+      - TEMPORAL_ADDRESS=gtr-temporal-server:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+    image: temporalio/ui:2.30.0
+    ports:
+      - 8080:8080
+      
+volumes:
+  gtr-temporal-pgsql:
+  gtr-temporal-elasticsearch:

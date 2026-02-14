@@ -3,9 +3,22 @@ name = "gtr-cli"
 version.workspace = true
 edition.workspace = true
 
+[[bin]]
+name = "gtr"
+path = "src/main.rs"
+
 [dependencies]
 gtr-core = { path = "../gtr-core" }
 gtr-temporal = { path = "../gtr-temporal" }
 clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
 anyhow = "1"
+toml = "0.8"
 tokio = { workspace = true }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+temporalio-sdk = { workspace = true }
+temporalio-sdk-core = { workspace = true }
+temporalio-common = { git = "https://github.com/temporalio/sdk-core", rev = "7ecb7c0" }
+prost-wkt-types = "0.7"
+chrono = "0.4"
