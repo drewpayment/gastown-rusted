@@ -15,6 +15,7 @@ pub mod handoff;
 pub mod formula;
 pub mod gate;
 pub mod hook;
+pub mod install;
 pub mod mail;
 pub mod mayor;
 pub mod mol;

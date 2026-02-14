@@ -109,6 +109,9 @@ enum Command {
     /// Stop Gas Town (stop mayor workflow)
     Down,
 
+    /// First-time setup — create directories, default config, validate dependencies
+    Install(commands::install::InstallCommand),
+
     /// Show Gas Town status
     Status,
 
@@ -181,6 +184,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Doctor => commands::doctor::run().await,
         Command::Up => commands::up::run().await,
         Command::Down => commands::down::run().await,
+        Command::Install(cmd) => commands::install::run(&cmd).await,
         Command::Status => commands::status::run().await,
         Command::Session(cmd) => commands::session::run(cmd).await,
         Command::Services(cmd) => commands::services::run(cmd),
