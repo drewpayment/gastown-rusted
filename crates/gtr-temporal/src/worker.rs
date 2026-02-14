@@ -64,6 +64,7 @@ pub async fn run_worker() -> Result<()> {
     worker.register_wf("rig_wf", workflows::rig::rig_wf);
     worker.register_wf("polecat_wf", workflows::polecat::polecat_wf);
     worker.register_wf("molecule_wf", workflows::molecule::molecule_wf);
+    worker.register_wf("dog_wf", workflows::dog::dog_wf);
 
     // Activities
     worker.register_activity("spawn_agent", activities::spawn_agent::spawn_agent);

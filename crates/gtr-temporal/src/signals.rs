@@ -270,3 +270,42 @@ pub struct MolStepState {
     pub status: String,
     pub output: Option<String>,
 }
+
+// Dog signal names
+pub const SIGNAL_DOG_DISPATCH: &str = "dog_dispatch";
+pub const SIGNAL_DOG_RELEASE: &str = "dog_release";
+pub const SIGNAL_DOG_STOP: &str = "dog_stop";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DogDispatchSignal {
+    pub rig: String,
+    pub work_item_id: String,
+    pub plugin: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DogState {
+    pub name: String,
+    pub status: String,
+    pub current_work: Option<String>,
+    pub current_rig: Option<String>,
+}
+
+// Gate signal names
+pub const SIGNAL_GATE_CLOSE: &str = "gate_close";
+pub const SIGNAL_GATE_APPROVE: &str = "gate_approve";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum GateType {
+    Timer { duration_secs: u64 },
+    Human { description: String },
+    Mail { from: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GateState {
+    pub id: String,
+    pub gate_type: GateType,
+    pub status: String,
+    pub parked_work: Option<String>,
+}

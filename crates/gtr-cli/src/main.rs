@@ -73,6 +73,10 @@ enum Command {
     #[command(subcommand)]
     Crew(commands::crew::CrewCommand),
 
+    /// Manage dogs (reusable cross-rig infrastructure workers)
+    #[command(subcommand)]
+    Dog(commands::dog::DogCommand),
+
     /// Inject context for a new agent session
     Prime(commands::prime::PrimeCommand),
 
@@ -143,6 +147,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Polecat(cmd) => commands::polecat::run(cmd).await,
         Command::Rig(cmd) => commands::rig::run(cmd).await,
         Command::Crew(cmd) => commands::crew::run(cmd).await,
+        Command::Dog(cmd) => commands::dog::run(cmd).await,
         Command::Prime(cmd) => commands::prime::run(cmd).await,
         Command::Handoff(cmd) => commands::handoff::run(cmd).await,
         Command::Agents(cmd) => commands::agents::run(cmd),

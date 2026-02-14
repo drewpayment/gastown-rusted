@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod boot;
 pub mod convoy;
+pub mod dog;
 pub mod formula;
 pub mod mayor;
 pub mod molecule;

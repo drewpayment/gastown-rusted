@@ -3,6 +3,7 @@ pub mod convoy;
 pub mod crew;
 pub mod diagnostics;
 pub mod doctor;
+pub mod dog;
 pub mod done;
 pub mod down;
 pub mod escalate;
