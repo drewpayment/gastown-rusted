@@ -5,9 +5,10 @@ use temporalio_sdk_core::WorkflowClientTrait;
 use gtr_temporal::signals::{PolecatDoneSignal, RefineryEnqueueSignal};
 
 #[derive(Debug, Parser)]
+#[command(about = "Mark work done and enqueue branch for merge (defaults to GTR_WORK_ITEM env var)")]
 pub struct DoneCommand {
-    /// Work item ID to enqueue for merge
-    pub work_item_id: String,
+    /// Work item ID to enqueue for merge (defaults to GTR_WORK_ITEM env var)
+    pub work_item_id: Option<String>,
 
     /// Branch name
     #[arg(short, long)]
@@ -19,6 +20,16 @@ pub struct DoneCommand {
 }
 
 pub async fn run(cmd: &DoneCommand) -> anyhow::Result<()> {
+    let work_item_id = cmd
+        .work_item_id
+        .clone()
+        .or_else(|| std::env::var("GTR_WORK_ITEM").ok())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "No work item specified. Pass <WORK_ITEM_ID> or set GTR_WORK_ITEM env var"
+            )
+        })?;
+
     let client = crate::client::connect().await?;
 
     // Signal polecat that work is done (if we're running as an agent)
@@ -47,7 +58,7 @@ pub async fn run(cmd: &DoneCommand) -> anyhow::Result<()> {
         .unwrap_or_else(|_| "refinery".to_string());
 
     let signal = RefineryEnqueueSignal {
-        work_item_id: cmd.work_item_id.clone(),
+        work_item_id: work_item_id.clone(),
         branch: cmd.branch.clone(),
         priority: cmd.priority,
     };
@@ -65,7 +76,7 @@ pub async fn run(cmd: &DoneCommand) -> anyhow::Result<()> {
 
     println!(
         "Enqueued '{}' (branch: {}, priority: P{}) for merge → {refinery_id}",
-        cmd.work_item_id, cmd.branch, cmd.priority
+        work_item_id, cmd.branch, cmd.priority
     );
     Ok(())
 }

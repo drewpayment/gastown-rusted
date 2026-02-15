@@ -2,35 +2,38 @@ use clap::Args;
 use temporalio_sdk_core::WorkflowClientTrait;
 
 #[derive(Debug, Args)]
+#[command(about = "Query agent's current work assignment (defaults to GTR_AGENT env var)")]
 pub struct HookCommand {
-    /// Agent workflow ID to query
-    pub agent: String,
+    /// Agent workflow ID to query (defaults to GTR_AGENT env var)
+    pub agent: Option<String>,
 }
 
 pub async fn run(cmd: &HookCommand) -> anyhow::Result<()> {
+    let agent_id = cmd
+        .agent
+        .clone()
+        .or_else(|| std::env::var("GTR_AGENT").ok())
+        .ok_or_else(|| anyhow::anyhow!("No agent specified. Set GTR_AGENT or pass <AGENT> argument"))?;
+
     let client = crate::client::connect().await?;
 
     let resp = client
-        .describe_workflow_execution(cmd.agent.clone(), None)
+        .describe_workflow_execution(agent_id.clone(), None)
         .await?;
 
     if let Some(info) = resp.workflow_execution_info {
         let status = crate::commands::convoy::workflow_status_str(info.status);
-        println!("Agent:  {}", cmd.agent);
+        println!("Agent:  {agent_id}");
         println!("Status: {status}");
 
-        // Display search attributes if available for hook info
-        // In a full implementation, we'd use a Temporal query to get the hook state.
-        // For now, the hook is part of the agent workflow's internal state,
-        // visible when the workflow completes (AgentState JSON).
         if info.status == 1 {
             println!("Hook:   (query agent workflow for current hook state)");
-            println!("        Use: gtr hook {} — agent must expose query handler", cmd.agent);
+            println!("        Use: gtr hook {agent_id} — agent must expose query handler");
         } else if info.status == 2 {
             println!("Hook:   (agent stopped — check workflow result for final state)");
         }
     } else {
-        println!("No agent workflow found: {}", cmd.agent);
+        println!("No agent workflow found: {agent_id}");
     }
 
     Ok(())

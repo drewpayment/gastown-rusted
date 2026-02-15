@@ -3,14 +3,14 @@ use temporalio_sdk_core::WorkflowClientTrait;
 
 #[derive(Debug, Subcommand)]
 pub enum WorkCommand {
-    /// Show a work item
+    /// Show details for a work item by workflow ID
     Show {
         /// Work item ID
         id: String,
     },
-    /// List work items
+    /// List running work items (Temporal work_item_wf workflows)
     List,
-    /// Close a work item
+    /// Close a work item by sending a close signal
     Close {
         /// Work item ID
         id: String,
@@ -20,12 +20,46 @@ pub enum WorkCommand {
 pub async fn run(cmd: &WorkCommand) -> anyhow::Result<()> {
     match cmd {
         WorkCommand::Show { id } => handle_show(id).await,
-        WorkCommand::List => {
-            println!("work list: not yet implemented");
-            Ok(())
-        }
+        WorkCommand::List => handle_list().await,
         WorkCommand::Close { id } => handle_close(id).await,
     }
+}
+
+async fn handle_list() -> anyhow::Result<()> {
+    let client = crate::client::connect().await?;
+    let resp = client
+        .list_workflow_executions(
+            100,
+            vec![],
+            "WorkflowType = 'work_item_wf' AND ExecutionStatus = 'Running'".to_string(),
+        )
+        .await?;
+
+    if resp.executions.is_empty() {
+        println!("No running work items.");
+        return Ok(());
+    }
+
+    println!("{:<30} {:<12} {:<24}", "WORK ITEM", "STATUS", "STARTED");
+    println!("{}", "-".repeat(66));
+
+    for exec in &resp.executions {
+        let wf_id = exec
+            .execution
+            .as_ref()
+            .map(|e| e.workflow_id.as_str())
+            .unwrap_or("unknown");
+        let status = workflow_status_str(exec.status);
+        let started = exec
+            .start_time
+            .as_ref()
+            .map(|t| format_timestamp(t))
+            .unwrap_or_else(|| "-".to_string());
+        println!("{:<30} {:<12} {:<24}", wf_id, status, started);
+    }
+
+    println!("\n{} work item(s) running", resp.executions.len());
+    Ok(())
 }
 
 async fn handle_show(id: &str) -> anyhow::Result<()> {

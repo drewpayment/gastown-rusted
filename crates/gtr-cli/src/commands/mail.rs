@@ -6,7 +6,7 @@ use gtr_temporal::signals::{AgentMailSignal, AgentNudgeSignal};
 
 #[derive(Debug, Subcommand)]
 pub enum MailCommand {
-    /// Send a message to an agent
+    /// Send a message to an agent via Temporal signal
     Send {
         /// Recipient agent workflow ID
         to: String,
@@ -16,7 +16,7 @@ pub enum MailCommand {
         #[arg(short, long, default_value = "cli")]
         from: String,
     },
-    /// Send a nudge to an agent
+    /// Send a nudge (priority ping) to an agent
     Nudge {
         /// Recipient agent workflow ID
         to: String,
@@ -34,55 +34,55 @@ pub enum MailCommand {
         #[arg(short, long, default_value = "cli")]
         from: String,
     },
-    /// Check inbox (query agent workflow for unread mail)
+    /// Check inbox — query agent workflow for mail (env: GTR_AGENT)
+    #[command(alias = "list")]
     Inbox {
-        /// Agent workflow ID (overrides GTR_AGENT env var)
-        #[arg(long)]
+        /// Agent workflow ID (defaults to GTR_AGENT env var)
         agent: Option<String>,
     },
-    /// Mark a message as read
+    /// Mark a message as read (requires Temporal query support)
     Read {
         /// Message index
         index: usize,
-        /// Agent workflow ID
+        /// Agent workflow ID (defaults to GTR_AGENT env var)
         #[arg(long)]
         agent: Option<String>,
     },
-    /// Reply to a message
+    /// Reply to a message by index
     Reply {
         /// Message index to reply to
         index: usize,
         /// Reply message
         #[arg(short, long)]
         message: String,
-        /// Agent workflow ID
+        /// Agent workflow ID (defaults to GTR_AGENT env var)
         #[arg(long)]
         agent: Option<String>,
     },
-    /// View a message thread
+    /// View a message thread (requires Temporal query support)
     Thread {
         /// Message index
         index: usize,
     },
-    /// Search mail by content
+    /// Search mail by content (requires Temporal query support)
     Search {
         /// Search query
         query: String,
     },
-    /// Archive a message
+    /// Archive a message (requires Temporal query support)
     Archive {
         /// Message index
         index: usize,
     },
-    /// Clear all mail
+    /// Clear all mail for an agent (requires Temporal query support)
     Clear {
-        /// Agent workflow ID
+        /// Agent workflow ID (defaults to GTR_AGENT env var)
         #[arg(long)]
         agent: Option<String>,
     },
-    /// Check for new mail (for hooks/polling)
+    /// Check for new mail — quick status via describe (env: GTR_AGENT)
     Check {
-        /// Agent workflow ID (overrides GTR_AGENT env var)
+        /// Agent workflow ID (defaults to GTR_AGENT env var)
         #[arg(long)]
         agent: Option<String>,
     },

@@ -6,7 +6,28 @@ use clap_complete::Shell;
 
 /// gtr — Gas Town Rusted CLI
 #[derive(Debug, Parser)]
-#[command(name = "gtr", version, about, long_about = None)]
+#[command(name = "gtr", version, about, long_about = "\
+gtr — Gas Town Rusted CLI
+
+Quick reference:
+  gtr up                      Start Gas Town (launch mayor)
+  gtr down                    Stop Gas Town gracefully
+  gtr status                  Show system overview
+  gtr rig list                List rigs (repos)
+  gtr agents list             List running agents
+  gtr work list               List active work items
+  gtr hook [AGENT]            Query agent's current work (env: GTR_AGENT)
+  gtr mail inbox [AGENT]      Check agent inbox (env: GTR_AGENT)
+  gtr mail send <TO> <MSG>    Send message to agent
+  gtr done <WORK_ID> -b <BR>  Mark work done, enqueue merge (env: GTR_WORK_ITEM)
+  gtr feed                    Real-time activity dashboard
+
+Environment variables:
+  GTR_AGENT       Default agent ID for hook, mail, checkpoint
+  GTR_WORK_ITEM   Default work item ID for done, checkpoint
+  GTR_RIG         Default rig for refinery routing
+  TEMPORAL_ADDRESS Temporal server (default: localhost:7233)
+")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -14,30 +35,30 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Attach to a live agent session (interactive Claude Code)
+    /// Attach to a live agent PTY session (interactive Claude Code)
     Attach(commands::attach::AttachCommand),
 
     /// Send a message to an agent (async via Temporal signal)
     Chat(commands::chat::ChatCommand),
 
-    /// Manage convoys (batches of work)
+    /// Manage convoys — list, show, create batches of work items
     #[command(subcommand)]
     Convoy(commands::convoy::ConvoyCommand),
 
-    /// Manage work items
+    /// Manage work items — show, list, close (Temporal work_item_wf)
     #[command(subcommand)]
     Work(commands::work::WorkCommand),
 
-    /// Assign work to an agent
+    /// Assign work to a rig (auto-spawns polecat), agent, mayor, or dogs
     Sling(commands::sling::SlingCommand),
 
     /// Unassign work from an agent
     Unsling(commands::unsling::UnslingCommand),
 
-    /// Query agent's current work
+    /// Query agent's current work assignment (defaults to GTR_AGENT env var)
     Hook(commands::hook::HookCommand),
 
-    /// Agent messaging system
+    /// Agent messaging — send, inbox/list, check, nudge, broadcast
     #[command(subcommand)]
     Mail(commands::mail::MailCommand),
 
@@ -45,74 +66,74 @@ enum Command {
     #[command(subcommand)]
     Formula(commands::formula::FormulaCommand),
 
-    /// Manage agents
+    /// List and inspect running agents (Temporal agent_wf)
     #[command(subcommand)]
     Agents(commands::agents::AgentsCommand),
 
-    /// Mayor workflow management
+    /// Mayor workflow management — the singleton orchestrator
     #[command(subcommand)]
     Mayor(commands::mayor::MayorCommand),
 
-    /// Mark work as done and enqueue for merge
+    /// Mark work done and enqueue branch for merge (defaults to GTR_WORK_ITEM env var)
     Done(commands::done::DoneCommand),
 
-    /// Escalate a work item immediately
+    /// Escalate a work item — signal immediate priority boost
     Escalate(commands::escalate::EscalateCommand),
 
-    /// Molecule (running formula instance) management
+    /// Molecule management — running formula instances
     #[command(subcommand)]
     Mol(commands::mol::MolCommand),
 
-    /// Merge queue management
+    /// Merge queue management — list and inspect refinery queue
     #[command(subcommand)]
     Mq(commands::mq::MqCommand),
 
-    /// Manage polecats (ephemeral workers)
+    /// Manage polecats — ephemeral workers that run agents on rigs
     #[command(subcommand)]
     Polecat(commands::polecat::PolecatCommand),
 
-    /// Manage rigs (git repositories)
+    /// Manage rigs — git repositories registered with Gas Town
     #[command(subcommand)]
     Rig(commands::rig::RigCommand),
 
-    /// Manage crew workspaces (persistent developer workspaces)
+    /// Manage crew workspaces — persistent developer workspaces
     #[command(subcommand)]
     Crew(commands::crew::CrewCommand),
 
-    /// Manage dogs (reusable cross-rig infrastructure workers)
+    /// Manage dogs — reusable cross-rig infrastructure workers
     #[command(subcommand)]
     Dog(commands::dog::DogCommand),
 
-    /// Manage gates (async wait primitives)
+    /// Manage gates — async wait primitives for workflow coordination
     #[command(subcommand)]
     Gate(commands::gate::GateCommand),
 
-    /// Inject context for a new agent session
+    /// Inject context for a new agent session (prime file)
     Prime(commands::prime::PrimeCommand),
 
-    /// Save context for the next session
+    /// Save context for the next session (handoff file)
     Handoff(commands::handoff::HandoffCommand),
 
-    /// Checkpoint management — save/restore session state
+    /// Checkpoint management — save/restore agent session state
     #[command(subcommand)]
     Checkpoint(commands::checkpoint::CheckpointCommand),
 
-    /// Real-time activity dashboard
+    /// Real-time activity dashboard — stream workflow events
     Feed(commands::feed::FeedCommand),
 
-    /// Check system health
+    /// Check system health — verify Temporal, mayor, and dependencies
     Doctor,
 
     /// Start Gas Town (launch mayor workflow)
     Up,
 
-    /// Stop Gas Town (stop mayor workflow)
+    /// Stop Gas Town gracefully (stop mayor and all agents)
     Down,
 
     /// First-time setup — create directories, default config, validate dependencies
     Install(commands::install::InstallCommand),
 
-    /// Show Gas Town status
+    /// Show Gas Town status — agents, rigs, PIDs overview
     Status,
 
     /// Session management — list/status of agent sessions
@@ -127,11 +148,11 @@ enum Command {
     #[command(subcommand)]
     Workspace(commands::workspace::WorkspaceCommand),
 
-    /// Diagnostics and system health
+    /// Diagnostics and system health — detailed inspection
     #[command(subcommand)]
     Diagnostics(commands::diagnostics::DiagnosticsCommand),
 
-    /// Run a Temporal worker
+    /// Run a Temporal worker (start workflow/activity processing)
     #[command(subcommand)]
     Worker(commands::worker::WorkerCommand),
 
@@ -177,7 +198,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Gate(cmd) => commands::gate::run(cmd).await,
         Command::Prime(cmd) => commands::prime::run(cmd).await,
         Command::Handoff(cmd) => commands::handoff::run(cmd).await,
-        Command::Agents(cmd) => commands::agents::run(cmd),
+        Command::Agents(cmd) => commands::agents::run(cmd).await,
         Command::Mayor(cmd) => commands::mayor::run(cmd).await,
         Command::Checkpoint(cmd) => commands::checkpoint::run(cmd).await,
         Command::Feed(cmd) => commands::feed::run(cmd).await,
@@ -190,7 +211,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Services(cmd) => commands::services::run(cmd),
         Command::Workspace(cmd) => commands::workspace::run(cmd),
         Command::Diagnostics(cmd) => commands::diagnostics::run(cmd).await,
-        Command::Worker(cmd) => commands::worker::run(cmd),
+        Command::Worker(cmd) => commands::worker::run(cmd).await,
         Command::Version => {
             println!("gtr {} ({})", env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_NAME"));
             println!("Rust edition: 2021");

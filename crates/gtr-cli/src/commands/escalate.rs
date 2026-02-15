@@ -2,8 +2,9 @@ use clap::Parser;
 use temporalio_sdk_core::WorkflowClientTrait;
 
 #[derive(Debug, Parser)]
+#[command(about = "Escalate a work item — sends an 'escalate' signal to boost priority immediately")]
 pub struct EscalateCommand {
-    /// Work item ID to escalate
+    /// Work item workflow ID to escalate
     pub id: String,
 }
 

@@ -4,6 +4,7 @@ use clap::Subcommand;
 use gtr_core::checkpoint::Checkpoint;
 
 #[derive(Debug, Subcommand)]
+#[command(about = "Save/restore agent session state (auto-detects GTR_AGENT, GTR_WORK_ITEM env vars)")]
 pub enum CheckpointCommand {
     /// Write a checkpoint capturing current state
     Write {
@@ -25,10 +26,10 @@ pub enum CheckpointCommand {
         /// Last commit hash
         #[arg(long)]
         commit: Option<String>,
-        /// Hooked work item ID
+        /// Hooked work item ID (defaults to GTR_WORK_ITEM env var)
         #[arg(long)]
         hooked: Option<String>,
-        /// Session ID
+        /// Session/agent ID (defaults to GTR_AGENT env var)
         #[arg(long)]
         session: Option<String>,
         /// Notes
@@ -63,6 +64,12 @@ pub async fn run(cmd: &CheckpointCommand) -> anyhow::Result<()> {
             notes,
         } => {
             let dir = dir.clone().unwrap_or_else(|| PathBuf::from("."));
+            let resolved_session = session
+                .clone()
+                .or_else(|| std::env::var("GTR_AGENT").ok());
+            let resolved_hooked = hooked
+                .clone()
+                .or_else(|| std::env::var("GTR_WORK_ITEM").ok());
             let cp = Checkpoint {
                 molecule_id: molecule.clone(),
                 current_step: step.clone(),
@@ -70,9 +77,9 @@ pub async fn run(cmd: &CheckpointCommand) -> anyhow::Result<()> {
                 modified_files: vec![],
                 last_commit: commit.clone(),
                 branch: branch.clone(),
-                hooked_work: hooked.clone(),
+                hooked_work: resolved_hooked,
                 timestamp: chrono::Utc::now(),
-                session_id: session.clone(),
+                session_id: resolved_session,
                 notes: notes.clone(),
             };
             cp.write(&dir)?;
