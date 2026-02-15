@@ -86,8 +86,14 @@ pub fn spawn(
             // Write PID file
             std::fs::write(dir.join("pid"), child.to_string())?;
 
-            // Write env.json for debugging
-            let env_json = serde_json::to_string_pretty(&env_vars)?;
+            // Write env.json for debugging and respawn recovery.
+            // Include __GTR_WORK_DIR so attach can respawn with the same work dir.
+            let mut env_save = env_vars.clone();
+            env_save.insert(
+                "__GTR_WORK_DIR".into(),
+                work_dir.to_string_lossy().to_string(),
+            );
+            let env_json = serde_json::to_string_pretty(&env_save)?;
             std::fs::write(dir.join("env.json"), env_json)?;
 
             Ok((child, pty.master))
@@ -260,6 +266,23 @@ pub fn kill_agent(agent_id: &str) -> anyhow::Result<bool> {
         cleanup(agent_id)?;
         Ok(false)
     }
+}
+
+/// Set the window size on a PTY file descriptor.
+/// This triggers SIGWINCH in the child process, causing it to re-render.
+pub fn set_winsize(fd: RawFd, rows: u16, cols: u16) -> anyhow::Result<()> {
+    let ws = Winsize {
+        ws_row: rows,
+        ws_col: cols,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    // SAFETY: fd is a valid PTY master fd, and ws is a valid Winsize struct.
+    let ret = unsafe { libc::ioctl(fd, libc::TIOCSWINSZ, &ws as *const Winsize) };
+    if ret == -1 {
+        anyhow::bail!("ioctl TIOCSWINSZ failed: {}", std::io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 #[cfg(test)]

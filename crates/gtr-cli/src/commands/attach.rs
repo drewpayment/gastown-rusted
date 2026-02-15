@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::os::unix::io::BorrowedFd;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -25,43 +27,111 @@ enum DetachReason {
     InvalidFd,
 }
 
+/// Check if a PTY master fd is alive by doing a non-blocking probe read.
+/// Returns true if the fd is alive, false if the slave side has closed.
+fn pty_is_alive(master_fd: nix::libc::c_int) -> bool {
+    use nix::fcntl::{fcntl, FcntlArg, OFlag};
+    let Ok(flags) = fcntl(master_fd, FcntlArg::F_GETFL) else {
+        return false;
+    };
+    let flags = OFlag::from_bits_truncate(flags);
+    if fcntl(master_fd, FcntlArg::F_SETFL(flags | OFlag::O_NONBLOCK)).is_err() {
+        return false;
+    }
+    let mut probe = [0u8; 1];
+    let result = nix::unistd::read(master_fd, &mut probe);
+    let _ = fcntl(master_fd, FcntlArg::F_SETFL(flags));
+    !matches!(result, Err(nix::Error::EIO))
+}
+
+/// Respawn an agent's PTY session. Reads env.json from the old runtime dir,
+/// cleans up, then spawns a fresh process + socket server.
+fn respawn_agent(agent_id: &str) -> anyhow::Result<()> {
+    let runtime_dir = gtr_temporal::pty::runtime_dir(agent_id);
+
+    // Read env vars from previous spawn (if available).
+    let env_path = runtime_dir.join("env.json");
+    let mut env: HashMap<String, String> = if env_path.exists() {
+        let data = std::fs::read_to_string(&env_path)?;
+        serde_json::from_str(&data).unwrap_or_default()
+    } else {
+        HashMap::new()
+    };
+
+    // Determine work_dir from saved env or fall back to ~/.gtr
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    let work_dir = env
+        .remove("__GTR_WORK_DIR")
+        .unwrap_or_else(|| format!("{home}/.gtr"));
+
+    // Ensure GTR_AGENT is set
+    env.entry("GTR_AGENT".into())
+        .or_insert_with(|| agent_id.to_string());
+
+    // Ensure gtr binary is on PATH
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(exe_dir) = current_exe.parent() {
+            let existing_path = env
+                .get("PATH")
+                .cloned()
+                .or_else(|| std::env::var("PATH").ok())
+                .unwrap_or_default();
+            env.insert(
+                "PATH".into(),
+                format!("{}:{existing_path}", exe_dir.display()),
+            );
+        }
+    }
+
+    let prompt = "You are being reattached after your previous session ended. \
+                  Run `gtr prime` to restore context, then `gtr hook` and `gtr mail inbox`.";
+
+    // Clean up stale runtime dir
+    gtr_temporal::pty::cleanup(agent_id)?;
+
+    // Spawn new PTY session
+    gtr_temporal::pty::spawn_with_server(
+        agent_id,
+        "claude",
+        &["--dangerously-skip-permissions".into(), prompt.into()],
+        &PathBuf::from(&work_dir),
+        &env,
+    )?;
+
+    Ok(())
+}
+
 pub async fn run(cmd: &AttachCommand) -> anyhow::Result<()> {
     let agent_id = &cmd.agent;
 
-    // Check if agent is running
-    if !gtr_temporal::pty::is_alive(agent_id) {
-        anyhow::bail!("Agent '{agent_id}' is not running. Check `gtr feed` for active agents.");
+    // Check if agent process is running, or if PTY needs respawn
+    let needs_respawn = if !gtr_temporal::pty::is_alive(agent_id) {
+        // No process at all — check if there's at least a socket (stale runtime dir)
+        let sock = gtr_temporal::pty::socket_path(agent_id);
+        if sock.exists() {
+            true // stale session, respawn
+        } else {
+            anyhow::bail!(
+                "Agent '{agent_id}' has no PTY session. Start it with `gtr up` or the boot workflow."
+            );
+        }
+    } else {
+        // Process exists — probe the PTY fd to see if it's alive
+        match gtr_temporal::pty::connect_pty(agent_id) {
+            Ok(fd) => !pty_is_alive(fd),
+            Err(_) => true, // can't connect to socket, respawn
+        }
+    };
+
+    if needs_respawn {
+        println!("Agent '{agent_id}' session ended. Respawning...");
+        respawn_agent(agent_id)?;
+        // Give the new process a moment to initialize
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }
 
     // Connect to PTY socket and receive master fd
     let master_fd = gtr_temporal::pty::connect_pty(agent_id)?;
-
-    // Quick sanity check: try a non-blocking read to see if the PTY is still alive.
-    // On macOS, a PTY master whose slave has closed will return EIO immediately.
-    {
-        use nix::fcntl::{fcntl, FcntlArg, OFlag};
-        let flags = fcntl(master_fd, FcntlArg::F_GETFL)?;
-        let flags = OFlag::from_bits_truncate(flags);
-        // Set non-blocking temporarily
-        fcntl(master_fd, FcntlArg::F_SETFL(flags | OFlag::O_NONBLOCK))?;
-        let mut probe = [0u8; 1];
-        let probe_result = nix::unistd::read(master_fd, &mut probe);
-        // Restore original flags
-        fcntl(master_fd, FcntlArg::F_SETFL(flags))?;
-
-        match probe_result {
-            Err(nix::Error::EIO) => {
-                // Slave side closed — child process has exited
-                anyhow::bail!(
-                    "Agent '{agent_id}' process has exited (PTY closed). \
-                     The boot workflow should respawn it automatically, or run: gtr agents show {agent_id}"
-                );
-            }
-            // EAGAIN = no data yet but fd is alive (good)
-            // Ok(n) = there's pending data (good, we'll re-read it in the loop)
-            _ => {}
-        }
-    }
 
     // Set PTY window size to match our terminal BEFORE entering raw mode
     if let Ok((cols, rows)) = terminal::size() {
