@@ -20,16 +20,49 @@ pub fn runtime_dir(agent_id: &str) -> PathBuf {
     PathBuf::from(home).join(".gtr").join("runtime").join(agent_id)
 }
 
-/// Check if an agent's PTY server process is alive.
+/// Check if an agent's PTY server process is alive (not a zombie).
 pub fn is_alive(agent_id: &str) -> bool {
     let pid_path = runtime_dir(agent_id).join("pid");
     if let Ok(pid_str) = std::fs::read_to_string(&pid_path) {
         if let Ok(pid) = pid_str.trim().parse::<i32>() {
             // Signal 0 checks if process exists without sending a signal
-            return nix::sys::signal::kill(Pid::from_raw(pid), None).is_ok();
+            if nix::sys::signal::kill(Pid::from_raw(pid), None).is_err() {
+                return false;
+            }
+            // Zombies respond to kill(0) but their PTY is dead.
+            // Try non-blocking waitpid to reap if we're the parent.
+            match nix::sys::wait::waitpid(
+                Pid::from_raw(pid),
+                Some(nix::sys::wait::WaitPidFlag::WNOHANG),
+            ) {
+                Ok(nix::sys::wait::WaitStatus::Exited(_, _))
+                | Ok(nix::sys::wait::WaitStatus::Signaled(_, _, _)) => {
+                    // We reaped a zombie — remove stale pid file
+                    let _ = std::fs::remove_file(&pid_path);
+                    return false;
+                }
+                Err(nix::Error::ECHILD) => {
+                    // Not our child — fall back to checking /proc or ps.
+                    // On macOS, read the process state via sysctl.
+                    return !is_zombie(pid);
+                }
+                _ => return true, // still running
+            }
         }
     }
     false
+}
+
+/// Check if a PID is a zombie process by shelling out to `ps`.
+fn is_zombie(pid: i32) -> bool {
+    std::process::Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "stat="])
+        .output()
+        .map(|o| {
+            let stat = String::from_utf8_lossy(&o.stdout);
+            stat.trim().starts_with('Z')
+        })
+        .unwrap_or(false)
 }
 
 /// Read the PID of an agent's PTY server process.
@@ -241,6 +274,33 @@ pub fn spawn_with_server(
         if let Err(e) = serve_pty(&agent_id_owned, master_raw) {
             tracing::error!("PTY server for '{}' exited: {e}", agent_id_owned);
         }
+    });
+
+    // Reaper thread: waitpid on the child so it doesn't become a zombie.
+    // When the child exits, remove the pid file and close the master fd
+    // (which makes the socket server's send_fd fail, stopping it).
+    let reaper_agent_id = agent_id.to_string();
+    std::thread::spawn(move || {
+        match nix::sys::wait::waitpid(pid, None) {
+            Ok(status) => {
+                tracing::info!(
+                    "Agent '{}' (PID {}) exited: {:?}",
+                    reaper_agent_id, pid, status
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "waitpid for '{}' (PID {}): {e}",
+                    reaper_agent_id, pid
+                );
+            }
+        }
+        // Remove pid file so is_alive() returns false
+        let pid_path = runtime_dir(&reaper_agent_id).join("pid");
+        let _ = std::fs::remove_file(&pid_path);
+        // Close master fd — this makes the PTY invalid for attached clients
+        // and causes the socket server to eventually stop.
+        unsafe { libc::close(master_raw); }
     });
 
     Ok(pid)
