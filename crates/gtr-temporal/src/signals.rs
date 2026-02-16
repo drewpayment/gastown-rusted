@@ -96,6 +96,8 @@ pub struct ConvoyClosedSignal {
 pub struct MayorState {
     pub active_convoys: Vec<String>,
     pub agents: Vec<MayorAgentEntry>,
+    #[serde(default)]
+    pub polecat_reports: Vec<PolecatReportSignal>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -213,11 +215,26 @@ pub const SIGNAL_POLECAT_HEARTBEAT: &str = "polecat_heartbeat";
 pub const SIGNAL_POLECAT_DONE: &str = "polecat_done";
 pub const SIGNAL_POLECAT_STUCK: &str = "polecat_stuck";
 pub const SIGNAL_POLECAT_KILL: &str = "polecat_kill";
+pub const SIGNAL_POLECAT_REPORT: &str = "polecat_report";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolecatReportSignal {
+    pub polecat_id: String,
+    pub name: String,
+    pub rig: String,
+    pub work_item_id: String,
+    pub branch: String,
+    pub status: String,
+    pub summary: Option<String>,
+    pub exit_reason: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PolecatDoneSignal {
     pub branch: String,
     pub status: String,
+    #[serde(default)]
+    pub summary: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -228,6 +245,8 @@ pub struct PolecatState {
     pub status: String,
     pub branch: String,
     pub worktree_path: String,
+    #[serde(default)]
+    pub summary: Option<String>,
 }
 
 // Hook signal names

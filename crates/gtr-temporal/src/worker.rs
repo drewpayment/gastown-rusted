@@ -77,6 +77,8 @@ pub async fn run_worker() -> Result<()> {
         activities::notification::send_notification,
     );
     worker.register_activity("check_agent_alive", activities::heartbeat::check_agent_alive);
+    worker.register_activity("kill_agent", activities::heartbeat::kill_agent_activity);
+    worker.register_activity("capture_pane", activities::heartbeat::capture_pane_activity);
 
     tracing::info!("gtr worker started on task queue '{DEFAULT_TASK_QUEUE}'");
     worker.run().await?;

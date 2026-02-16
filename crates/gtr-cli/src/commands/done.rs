@@ -17,6 +17,10 @@ pub struct DoneCommand {
     /// Priority (0 = highest)
     #[arg(short, long, default_value = "2")]
     pub priority: u8,
+
+    /// Summary of work done (sent to polecat workflow and mayor)
+    #[arg(short, long)]
+    pub summary: Option<String>,
 }
 
 pub async fn run(cmd: &DoneCommand) -> anyhow::Result<()> {
@@ -37,6 +41,7 @@ pub async fn run(cmd: &DoneCommand) -> anyhow::Result<()> {
         let done_signal = PolecatDoneSignal {
             branch: cmd.branch.clone(),
             status: "completed".to_string(),
+            summary: cmd.summary.clone(),
         };
         let payload = done_signal.as_json_payload()?;
         client
@@ -64,7 +69,7 @@ pub async fn run(cmd: &DoneCommand) -> anyhow::Result<()> {
     };
 
     let payload = signal.as_json_payload()?;
-    client
+    let enqueue_result = client
         .signal_workflow_execution(
             refinery_id.clone(),
             String::new(),
@@ -72,11 +77,21 @@ pub async fn run(cmd: &DoneCommand) -> anyhow::Result<()> {
             Some(payload.into()),
             None,
         )
-        .await?;
+        .await;
 
-    println!(
-        "Enqueued '{}' (branch: {}, priority: P{}) for merge → {refinery_id}",
-        work_item_id, cmd.branch, cmd.priority
-    );
+    match enqueue_result {
+        Ok(_) => {
+            println!(
+                "Enqueued '{}' (branch: {}, priority: P{}) for merge → {refinery_id}",
+                work_item_id, cmd.branch, cmd.priority
+            );
+        }
+        Err(e) => {
+            println!(
+                "Done signaled, but refinery enqueue failed (branch saved on '{}'): {e}",
+                cmd.branch
+            );
+        }
+    }
     Ok(())
 }

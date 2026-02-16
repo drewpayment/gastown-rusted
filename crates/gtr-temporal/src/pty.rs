@@ -1,18 +1,10 @@
 use std::collections::HashMap;
-use std::ffi::CString;
-use std::os::unix::io::{AsRawFd, FromRawFd, OwnedFd, RawFd};
-use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 
-use nix::pty::{openpty, Winsize};
-use nix::sys::socket::{
-    recvmsg, sendmsg, ControlMessage, ControlMessageOwned, MsgFlags,
-};
-use nix::unistd::{close, dup2, execvp, fork, setsid, ForkResult, Pid};
+use nix::unistd::Pid;
 
 /// Runtime directory for a single agent's PTY session.
 /// Layout: ~/.gtr/runtime/<agent-id>/
-///   - pty.sock    Unix domain socket for attach
 ///   - pid         Process ID file
 ///   - env.json    Env vars used at spawn
 pub fn runtime_dir(agent_id: &str) -> PathBuf {
@@ -20,62 +12,133 @@ pub fn runtime_dir(agent_id: &str) -> PathBuf {
     PathBuf::from(home).join(".gtr").join("runtime").join(agent_id)
 }
 
-/// Check if an agent's PTY server process is alive (not a zombie).
-pub fn is_alive(agent_id: &str) -> bool {
-    let pid_path = runtime_dir(agent_id).join("pid");
-    if let Ok(pid_str) = std::fs::read_to_string(&pid_path) {
-        if let Ok(pid) = pid_str.trim().parse::<i32>() {
-            // Signal 0 checks if process exists without sending a signal
-            if nix::sys::signal::kill(Pid::from_raw(pid), None).is_err() {
-                return false;
-            }
-            // Zombies respond to kill(0) but their PTY is dead.
-            // Try non-blocking waitpid to reap if we're the parent.
-            match nix::sys::wait::waitpid(
-                Pid::from_raw(pid),
-                Some(nix::sys::wait::WaitPidFlag::WNOHANG),
-            ) {
-                Ok(nix::sys::wait::WaitStatus::Exited(_, _))
-                | Ok(nix::sys::wait::WaitStatus::Signaled(_, _, _)) => {
-                    // We reaped a zombie — remove stale pid file
-                    let _ = std::fs::remove_file(&pid_path);
-                    return false;
-                }
-                Err(nix::Error::ECHILD) => {
-                    // Not our child — fall back to checking /proc or ps.
-                    // On macOS, read the process state via sysctl.
-                    return !is_zombie(pid);
-                }
-                _ => return true, // still running
-            }
-        }
-    }
-    false
+/// Derive the tmux session name for an agent.
+pub fn tmux_session_name(agent_id: &str) -> String {
+    format!("gtr-{agent_id}")
 }
 
-/// Check if a PID is a zombie process by shelling out to `ps`.
-fn is_zombie(pid: i32) -> bool {
-    std::process::Command::new("ps")
-        .args(["-p", &pid.to_string(), "-o", "stat="])
+/// Verify tmux is installed and >= 3.2.
+pub fn ensure_tmux() -> anyhow::Result<()> {
+    let output = std::process::Command::new("tmux")
+        .arg("-V")
         .output()
-        .map(|o| {
-            let stat = String::from_utf8_lossy(&o.stdout);
-            stat.trim().starts_with('Z')
-        })
+        .map_err(|_| anyhow::anyhow!("tmux not found — install tmux >= 3.2"))?;
+
+    if !output.status.success() {
+        anyhow::bail!("tmux -V failed");
+    }
+
+    let version_str = String::from_utf8_lossy(&output.stdout);
+    // Parse "tmux 3.6a" -> "3.6"
+    let version_part = version_str
+        .trim()
+        .strip_prefix("tmux ")
+        .unwrap_or(version_str.trim());
+    // Extract major.minor (strip trailing letters like "a")
+    let numeric: String = version_part
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
+    let major_minor: f64 = numeric.parse().unwrap_or(0.0);
+    if major_minor < 3.2 {
+        anyhow::bail!("tmux >= 3.2 required (found {version_str})");
+    }
+
+    Ok(())
+}
+
+/// Ensure the GTR tmux config file exists at ~/.gtr/config/tmux.conf.
+/// Returns the path to the config file.
+pub fn ensure_tmux_config() -> anyhow::Result<PathBuf> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    let config_dir = PathBuf::from(&home).join(".gtr").join("config");
+    std::fs::create_dir_all(&config_dir)?;
+
+    let config_path = config_dir.join("tmux.conf");
+    if !config_path.exists() {
+        std::fs::write(
+            &config_path,
+            "set -g status off\n\
+             set -g mouse off\n\
+             set -g history-limit 50000\n\
+             set -g default-terminal \"xterm-256color\"\n\
+             set -g prefix None\n\
+             unbind-key C-b\n\
+             bind-key -n C-\\\\ detach-client\n",
+        )?;
+    }
+
+    Ok(config_path)
+}
+
+/// Check if an agent's tmux session is alive.
+pub fn is_alive(agent_id: &str) -> bool {
+    let session = tmux_session_name(agent_id);
+    std::process::Command::new("tmux")
+        .args(["-L", "gtr", "has-session", "-t", &session])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
         .unwrap_or(false)
 }
 
-/// Read the PID of an agent's PTY server process.
+/// Read the PID of an agent's process (the pane command) from tmux.
 pub fn read_pid(agent_id: &str) -> Option<Pid> {
-    let pid_path = runtime_dir(agent_id).join("pid");
-    let pid_str = std::fs::read_to_string(&pid_path).ok()?;
+    let session = tmux_session_name(agent_id);
+    let output = std::process::Command::new("tmux")
+        .args([
+            "-L",
+            "gtr",
+            "list-panes",
+            "-t",
+            &session,
+            "-F",
+            "#{pane_pid}",
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        // Fall back to PID file
+        let pid_path = runtime_dir(agent_id).join("pid");
+        let pid_str = std::fs::read_to_string(&pid_path).ok()?;
+        let pid: i32 = pid_str.trim().parse().ok()?;
+        return Some(Pid::from_raw(pid));
+    }
+
+    let pid_str = String::from_utf8_lossy(&output.stdout);
     let pid: i32 = pid_str.trim().parse().ok()?;
     Some(Pid::from_raw(pid))
 }
 
-/// Get the Unix socket path for an agent.
-pub fn socket_path(agent_id: &str) -> PathBuf {
-    runtime_dir(agent_id).join("pty.sock")
+/// Capture the last N lines of an agent's tmux pane output.
+pub fn capture_pane(agent_id: &str, lines: u32) -> Option<String> {
+    let session = tmux_session_name(agent_id);
+    let output = std::process::Command::new("tmux")
+        .args([
+            "-L",
+            "gtr",
+            "capture-pane",
+            "-t",
+            &session,
+            "-p",
+            "-S",
+            &format!("-{lines}"),
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
 }
 
 /// Clean up runtime directory for an agent.
@@ -87,174 +150,109 @@ pub fn cleanup(agent_id: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Spawn a subprocess with a PTY. Returns the child PID.
-/// The PTY master fd is kept open in the current process.
-/// A Unix socket server is NOT started here — that's Task 53.
+/// Spawn a subprocess inside a detached tmux session. Returns the child PID.
 pub fn spawn(
     agent_id: &str,
     program: &str,
     args: &[String],
     work_dir: &Path,
     env_vars: &HashMap<String, String>,
-) -> anyhow::Result<(Pid, OwnedFd)> {
+) -> anyhow::Result<Pid> {
+    ensure_tmux()?;
+    let config_path = ensure_tmux_config()?;
+    let session = tmux_session_name(agent_id);
+
     // Create runtime directory
     let dir = runtime_dir(agent_id);
     std::fs::create_dir_all(&dir)?;
 
-    // Create PTY
-    let winsize = Winsize {
-        ws_row: 50,
-        ws_col: 200,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+    // Write env.json for debugging and respawn recovery.
+    let mut env_save = env_vars.clone();
+    env_save.insert(
+        "__GTR_WORK_DIR".into(),
+        work_dir.to_string_lossy().to_string(),
+    );
+    let env_json = serde_json::to_string_pretty(&env_save)?;
+    std::fs::write(dir.join("env.json"), env_json)?;
+
+    // Build the shell command string
+    let escaped_program = shell_escape::escape(program.into());
+    let escaped_args: Vec<String> = args
+        .iter()
+        .map(|a| shell_escape::escape(a.into()).to_string())
+        .collect();
+    let shell_cmd = if escaped_args.is_empty() {
+        escaped_program.to_string()
+    } else {
+        format!("{escaped_program} {}", escaped_args.join(" "))
     };
-    let pty = openpty(Some(&winsize), None)?;
 
-    // Fork
-    match unsafe { fork() }? {
-        ForkResult::Parent { child } => {
-            // Close slave in parent
-            drop(pty.slave);
+    // Build tmux new-session command
+    let mut cmd = std::process::Command::new("tmux");
+    cmd.args([
+        "-L",
+        "gtr",
+        "-f",
+        config_path.to_str().unwrap_or(""),
+        "new-session",
+        "-d",
+        "-s",
+        &session,
+        "-c",
+        work_dir.to_str().unwrap_or("."),
+        "-x",
+        "200",
+        "-y",
+        "50",
+    ]);
 
-            // Write PID file
-            std::fs::write(dir.join("pid"), child.to_string())?;
-
-            // Write env.json for debugging and respawn recovery.
-            // Include __GTR_WORK_DIR so attach can respawn with the same work dir.
-            let mut env_save = env_vars.clone();
-            env_save.insert(
-                "__GTR_WORK_DIR".into(),
-                work_dir.to_string_lossy().to_string(),
-            );
-            let env_json = serde_json::to_string_pretty(&env_save)?;
-            std::fs::write(dir.join("env.json"), env_json)?;
-
-            Ok((child, pty.master))
-        }
-        ForkResult::Child => {
-            // Close master in child
-            drop(pty.master);
-
-            // Create new session (detach from parent terminal)
-            setsid()?;
-
-            // Set slave as controlling terminal
-            let slave_fd = pty.slave.as_raw_fd();
-            unsafe {
-                nix::libc::ioctl(slave_fd, nix::libc::TIOCSCTTY as _, 0);
-            }
-
-            // Redirect stdio to PTY slave
-            dup2(slave_fd, 0)?;
-            dup2(slave_fd, 1)?;
-            dup2(slave_fd, 2)?;
-            if slave_fd > 2 {
-                drop(pty.slave);
-            }
-
-            // Set working directory
-            std::env::set_current_dir(work_dir)?;
-
-            // Set environment variables
-            for (k, v) in env_vars {
-                std::env::set_var(k, v);
-            }
-
-            // Exec
-            let c_program = CString::new(program)?;
-            let c_args: Vec<CString> = std::iter::once(CString::new(program)?)
-                .chain(args.iter().map(|a| CString::new(a.as_str()).unwrap()))
-                .collect();
-            nix::unistd::execvp(&c_program, &c_args)?;
-
-            unreachable!()
-        }
+    // Add environment variables via -e flags (tmux >= 3.2)
+    for (k, v) in env_vars {
+        cmd.arg("-e");
+        cmd.arg(format!("{k}={v}"));
     }
+
+    // The shell command to run
+    cmd.arg(shell_cmd);
+
+    let output = cmd.output()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("tmux new-session failed: {stderr}");
+    }
+
+    // Get PID via tmux list-panes
+    let pid_output = std::process::Command::new("tmux")
+        .args([
+            "-L",
+            "gtr",
+            "list-panes",
+            "-t",
+            &session,
+            "-F",
+            "#{pane_pid}",
+        ])
+        .output()?;
+
+    let pid_str = String::from_utf8_lossy(&pid_output.stdout);
+    let pid: i32 = pid_str
+        .trim()
+        .parse()
+        .map_err(|e| anyhow::anyhow!("Failed to parse pane PID '{pid_str}': {e}"))?;
+
+    // Write PID file for backward compat
+    std::fs::write(dir.join("pid"), pid.to_string())?;
+
+    tracing::info!(
+        "Spawned agent '{agent_id}' in tmux session '{session}' (PID {pid})"
+    );
+
+    Ok(Pid::from_raw(pid))
 }
 
-/// Start a Unix socket server that passes the PTY master fd to connecting clients.
-/// This function blocks — run it in a dedicated thread.
-pub fn serve_pty(agent_id: &str, master_fd: RawFd) -> anyhow::Result<()> {
-    let sock_path = socket_path(agent_id);
-    // Remove stale socket if it exists
-    if sock_path.exists() {
-        std::fs::remove_file(&sock_path)?;
-    }
-
-    let listener = UnixListener::bind(&sock_path)?;
-    // Set socket permissions to owner-only
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&sock_path, std::fs::Permissions::from_mode(0o600))?;
-    }
-
-    tracing::info!("PTY server listening on {}", sock_path.display());
-
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                if let Err(e) = send_fd(&stream, master_fd) {
-                    tracing::warn!("Failed to send PTY fd to client: {e}");
-                }
-            }
-            Err(e) => {
-                tracing::warn!("Accept failed: {e}");
-                break;
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// Send a file descriptor over a Unix socket using SCM_RIGHTS.
-fn send_fd(stream: &UnixStream, fd: RawFd) -> nix::Result<()> {
-    let fds = [fd];
-    let cmsg = [ControlMessage::ScmRights(&fds)];
-    let iov = [std::io::IoSlice::new(b"P")]; // "P" for PTY
-
-    sendmsg::<()>(stream.as_raw_fd(), &iov, &cmsg, MsgFlags::empty(), None)?;
-    Ok(())
-}
-
-/// Receive a file descriptor from a Unix socket using SCM_RIGHTS.
-pub fn recv_fd(stream: &UnixStream) -> nix::Result<RawFd> {
-    let mut buf = [0u8; 1];
-    let mut iov = [std::io::IoSliceMut::new(&mut buf)];
-    let mut cmsgspace = nix::cmsg_space!([RawFd; 1]);
-
-    let msg = recvmsg::<()>(
-        stream.as_raw_fd(),
-        &mut iov,
-        Some(&mut cmsgspace),
-        MsgFlags::empty(),
-    )?;
-
-    for cmsg in msg.cmsgs()? {
-        if let ControlMessageOwned::ScmRights(fds) = cmsg {
-            if let Some(&fd) = fds.first() {
-                return Ok(fd);
-            }
-        }
-    }
-
-    Err(nix::Error::EINVAL)
-}
-
-/// Connect to an agent's PTY socket and receive the master fd.
-pub fn connect_pty(agent_id: &str) -> anyhow::Result<RawFd> {
-    let sock_path = socket_path(agent_id);
-    if !sock_path.exists() {
-        anyhow::bail!("No PTY session for agent '{agent_id}' — is it running?");
-    }
-    let stream = UnixStream::connect(&sock_path)?;
-    let fd = recv_fd(&stream)?;
-    Ok(fd)
-}
-
-/// Spawn a process with PTY and start the socket server in a background thread.
+/// Spawn a process in a tmux session.
 /// This is the main entry point for launching an agent.
+/// (Thin wrapper around spawn — no more server thread or reaper thread needed.)
 pub fn spawn_with_server(
     agent_id: &str,
     program: &str,
@@ -262,87 +260,46 @@ pub fn spawn_with_server(
     work_dir: &Path,
     env_vars: &HashMap<String, String>,
 ) -> anyhow::Result<Pid> {
-    let (pid, master_fd) = spawn(agent_id, program, args, work_dir, env_vars)?;
-    let master_raw = master_fd.as_raw_fd();
-
-    // Leak the OwnedFd so it stays open for the lifetime of the server thread.
-    // The fd will be closed when the process exits.
-    std::mem::forget(master_fd);
-
-    let agent_id_owned = agent_id.to_string();
-    std::thread::spawn(move || {
-        if let Err(e) = serve_pty(&agent_id_owned, master_raw) {
-            tracing::error!("PTY server for '{}' exited: {e}", agent_id_owned);
-        }
-    });
-
-    // Reaper thread: waitpid on the child so it doesn't become a zombie.
-    // When the child exits, remove the pid file and close the master fd
-    // (which makes the socket server's send_fd fail, stopping it).
-    let reaper_agent_id = agent_id.to_string();
-    std::thread::spawn(move || {
-        match nix::sys::wait::waitpid(pid, None) {
-            Ok(status) => {
-                tracing::info!(
-                    "Agent '{}' (PID {}) exited: {:?}",
-                    reaper_agent_id, pid, status
-                );
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "waitpid for '{}' (PID {}): {e}",
-                    reaper_agent_id, pid
-                );
-            }
-        }
-        // Remove pid file so is_alive() returns false
-        let pid_path = runtime_dir(&reaper_agent_id).join("pid");
-        let _ = std::fs::remove_file(&pid_path);
-        // Close master fd — this makes the PTY invalid for attached clients
-        // and causes the socket server to eventually stop.
-        unsafe { libc::close(master_raw); }
-    });
-
-    Ok(pid)
+    spawn(agent_id, program, args, work_dir, env_vars)
 }
 
-/// Kill an agent's subprocess and clean up its runtime directory.
+/// Kill an agent's tmux session and all processes in its process group.
 pub fn kill_agent(agent_id: &str) -> anyhow::Result<bool> {
-    if let Some(pid) = read_pid(agent_id) {
-        // Send SIGTERM first
-        nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGTERM).ok();
+    let session = tmux_session_name(agent_id);
 
-        // Wait briefly for graceful shutdown
-        std::thread::sleep(std::time::Duration::from_millis(500));
+    // Get the pane PID before killing the session
+    let pane_pid = read_pid(agent_id);
 
-        // Force kill if still alive
-        if nix::sys::signal::kill(pid, None).is_ok() {
+    // Kill the tmux session (sends SIGHUP to foreground process)
+    let kill_output = std::process::Command::new("tmux")
+        .args(["-L", "gtr", "kill-session", "-t", &session])
+        .output();
+
+    let session_existed = kill_output
+        .as_ref()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    // Kill the process group to catch subagents spawned by Claude Code
+    if let Some(pid) = pane_pid {
+        // Try to kill the entire process group
+        let pgid = nix::unistd::getpgid(Some(pid)).ok();
+        if let Some(pgid) = pgid {
+            // Kill process group with SIGTERM
+            nix::sys::signal::killpg(pgid, nix::sys::signal::Signal::SIGTERM).ok();
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            // Force kill if still around
+            nix::sys::signal::killpg(pgid, nix::sys::signal::Signal::SIGKILL).ok();
+        } else {
+            // Fall back to killing the individual PID
+            nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGTERM).ok();
+            std::thread::sleep(std::time::Duration::from_millis(500));
             nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGKILL).ok();
         }
-
-        cleanup(agent_id)?;
-        Ok(true)
-    } else {
-        cleanup(agent_id)?;
-        Ok(false)
     }
-}
 
-/// Set the window size on a PTY file descriptor.
-/// This triggers SIGWINCH in the child process, causing it to re-render.
-pub fn set_winsize(fd: RawFd, rows: u16, cols: u16) -> anyhow::Result<()> {
-    let ws = Winsize {
-        ws_row: rows,
-        ws_col: cols,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
-    };
-    // SAFETY: fd is a valid PTY master fd, and ws is a valid Winsize struct.
-    let ret = unsafe { libc::ioctl(fd, libc::TIOCSWINSZ, &ws as *const Winsize) };
-    if ret == -1 {
-        anyhow::bail!("ioctl TIOCSWINSZ failed: {}", std::io::Error::last_os_error());
-    }
-    Ok(())
+    cleanup(agent_id)?;
+    Ok(session_existed || pane_pid.is_some())
 }
 
 #[cfg(test)]
@@ -356,14 +313,43 @@ mod tests {
     }
 
     #[test]
+    fn tmux_session_name_format() {
+        assert_eq!(tmux_session_name("mayor"), "gtr-mayor");
+        assert_eq!(
+            tmux_session_name("cfb-stats-polecat-nux"),
+            "gtr-cfb-stats-polecat-nux"
+        );
+    }
+
+    #[test]
     fn is_alive_returns_false_for_nonexistent() {
         assert!(!is_alive("nonexistent-agent-xyz"));
     }
 
     #[test]
+    fn capture_pane_returns_none_for_nonexistent() {
+        assert!(capture_pane("nonexistent-agent-xyz", 100).is_none());
+    }
+
+    #[test]
     fn spawn_and_kill_echo() {
+        // Skip if tmux not installed
+        if std::process::Command::new("tmux")
+            .arg("-V")
+            .output()
+            .is_err()
+        {
+            eprintln!("Skipping test -- tmux not installed");
+            return;
+        }
+
         let agent_id = "test-spawn-echo";
         cleanup(agent_id).ok();
+        // Kill any leftover session
+        let session = tmux_session_name(agent_id);
+        let _ = std::process::Command::new("tmux")
+            .args(["-L", "gtr", "kill-session", "-t", &session])
+            .output();
 
         let mut env = HashMap::new();
         env.insert("TEST_VAR".into(), "hello".into());
@@ -375,17 +361,26 @@ mod tests {
             Path::new("/tmp"),
             &env,
         );
-        assert!(result.is_ok());
-        let (pid, _master_fd) = result.unwrap();
+        assert!(result.is_ok(), "spawn failed: {:?}", result.err());
+        let pid = result.unwrap();
 
         // Verify PID file written
         assert!(runtime_dir(agent_id).join("pid").exists());
+
+        // Verify tmux session exists
         assert!(is_alive(agent_id));
 
-        // Kill it
-        nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGTERM).ok();
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        // Verify read_pid works
+        let read = read_pid(agent_id);
+        assert!(read.is_some());
+        assert_eq!(read.unwrap(), pid);
 
-        cleanup(agent_id).ok();
+        // Kill it
+        let killed = kill_agent(agent_id);
+        assert!(killed.is_ok());
+        assert!(killed.unwrap());
+
+        // Verify session is gone
+        assert!(!is_alive(agent_id));
     }
 }
