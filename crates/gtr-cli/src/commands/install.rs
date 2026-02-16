@@ -22,7 +22,7 @@ pub async fn run(cmd: &InstallCommand) -> anyhow::Result<()> {
     let config_path = gtr_core::dirs::config_dir().join("town.toml");
     if !config_path.exists() {
         let default_config = r#"# Gas Town Configuration
-# See: gtr help
+# See: rgt help
 
 [town]
 name = "gas-town"
@@ -58,6 +58,29 @@ max_retries = 3
             println!("[!!] Claude CLI not found — install from https://claude.ai/claude-code");
         }
 
+        // Check tmux
+        let tmux_ok = std::process::Command::new("tmux")
+            .arg("-V")
+            .output()
+            .map(|o| {
+                if !o.status.success() {
+                    return false;
+                }
+                let ver = String::from_utf8_lossy(&o.stdout);
+                let part = ver.trim().strip_prefix("tmux ").unwrap_or(ver.trim());
+                let numeric: String = part
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit() || *c == '.')
+                    .collect();
+                numeric.parse::<f64>().unwrap_or(0.0) >= 3.2
+            })
+            .unwrap_or(false);
+        if tmux_ok {
+            println!("[ok] tmux >= 3.2 found");
+        } else {
+            println!("[!!] tmux >= 3.2 not found — install from https://github.com/tmux/tmux");
+        }
+
         // Check Temporal CLI
         let temporal_ok = std::process::Command::new("which")
             .arg("temporal")
@@ -79,15 +102,15 @@ max_retries = 3
         if server_ok {
             println!("[ok] Temporal server reachable at localhost:7233");
         } else {
-            println!("[--] Temporal server not reachable (start with: temporal server start-dev)");
+            println!("[--] Temporal server not reachable (start with: rgt start)");
         }
     }
 
     println!();
     println!("Gas Town installed. Next steps:");
-    println!("  1. Start Temporal: temporal server start-dev");
-    println!("  2. Start Gas Town: gtr up");
-    println!("  3. Start worker:   gtr worker run");
+    println!("  1. Start everything:  rgt start");
+    println!("  2. Check sessions:    rgt sessions");
+    println!("  3. Or manually:       rgt up && rgt worker run");
 
     Ok(())
 }
