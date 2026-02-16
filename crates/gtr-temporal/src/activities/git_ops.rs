@@ -124,16 +124,28 @@ fn run_git_op(op: GitOperation) -> Result<GitResult, ActivityError> {
             remote,
             branch,
         } => {
+            // Shell out to system git for push — inherits SSH agent, ~/.ssh/config,
+            // credential helpers, etc. git2's push requires explicit SSH callbacks.
             tracing::info!("git push {remote} {branch} in {repo_path}");
-            let repo = open_repo(&repo_path)?;
-            let mut remote = repo.find_remote(&remote).map_err(git_err)?;
-            let refspec = format!("refs/heads/{branch}:refs/heads/{branch}");
-            remote.push(&[&refspec], None).map_err(git_err)?;
+            let output = std::process::Command::new("git")
+                .args(["push", &remote, &branch])
+                .current_dir(&repo_path)
+                .output()
+                .map_err(|e| {
+                    ActivityError::NonRetryable(anyhow::anyhow!("git push spawn failed: {e}"))
+                })?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(ActivityError::NonRetryable(anyhow::anyhow!(
+                    "git push failed: {stderr}"
+                )));
+            }
 
             Ok(GitResult {
                 op: "push".into(),
                 success: true,
-                message: format!("Pushed {branch}"),
+                message: format!("Pushed {branch} to {remote}"),
             })
         }
         GitOperation::WorktreeAdd {
@@ -142,20 +154,54 @@ fn run_git_op(op: GitOperation) -> Result<GitResult, ActivityError> {
             branch,
         } => {
             tracing::info!("git worktree add {path} {branch} in {repo_path}");
+            let wt_name = branch.replace('/', "-");
+            let worktree_path = Path::new(&path);
+
+            // Clean up stale worktree from a previous run if it exists
+            if worktree_path.exists() {
+                tracing::info!("Removing stale worktree dir: {path}");
+                std::fs::remove_dir_all(worktree_path).map_err(|e| {
+                    ActivityError::NonRetryable(anyhow::anyhow!(
+                        "failed to remove stale worktree {path}: {e}"
+                    ))
+                })?;
+            }
+            // Also remove stale worktree metadata from the bare repo
+            let wt_meta = Path::new(&repo_path).join("worktrees").join(&wt_name);
+            if wt_meta.exists() {
+                tracing::info!("Removing stale worktree metadata: {}", wt_meta.display());
+                let _ = std::fs::remove_dir_all(&wt_meta);
+            }
+
             let repo = open_repo(&repo_path)?;
 
-            // Create branch from HEAD if it doesn't exist
+            // Ensure parent directory of worktree path exists
+            if let Some(parent) = worktree_path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    ActivityError::NonRetryable(anyhow::anyhow!(
+                        "failed to create worktree parent dir {}: {e}",
+                        parent.display()
+                    ))
+                })?;
+            }
+
+            // Delete stale branch if it exists (from a previous failed run)
+            // so we get a fresh branch from HEAD
+            if let Ok(mut old_branch) = repo.find_branch(&branch, git2::BranchType::Local) {
+                let _ = old_branch.delete();
+            }
+
+            // Create branch from HEAD
             let head = repo.head().map_err(git_err)?;
             let commit = head.peel_to_commit().map_err(git_err)?;
-            let branch_ref = match repo.find_branch(&branch, git2::BranchType::Local) {
-                Ok(b) => b,
-                Err(_) => repo.branch(&branch, &commit, false).map_err(git_err)?,
-            };
+            let branch_ref = repo.branch(&branch, &commit, false).map_err(git_err)?;
 
             let reference = branch_ref.into_reference();
+            // Worktree name must be flat (no slashes) — git2 creates
+            // .repo.git/worktrees/<name>/ and slashes cause mkdir failures.
             repo.worktree(
-                &branch,
-                Path::new(&path),
+                &wt_name,
+                worktree_path,
                 Some(
                     git2::WorktreeAddOptions::new()
                         .reference(Some(&reference)),

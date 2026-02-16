@@ -187,6 +187,28 @@ pub async fn refinery_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::
                 Some(Status::Completed(_)) => {
                     entry.status = "merged".to_string();
                     tracing::info!("Refinery: merged '{item_id}' branch '{branch}'");
+
+                    // Step 5: Push main to remote
+                    let push_op = GitOperation::Push {
+                        repo_path: repo_path.clone(),
+                        remote: "origin".to_string(),
+                        branch: "main".to_string(),
+                    };
+                    let push_result = ctx
+                        .activity(ActivityOptions {
+                            activity_type: "git_operation".to_string(),
+                            input: push_op.as_json_payload()?,
+                            start_to_close_timeout: Some(Duration::from_secs(120)),
+                            ..Default::default()
+                        })
+                        .await;
+
+                    if !push_result.completed_ok() {
+                        tracing::warn!("Refinery: push to remote failed for '{item_id}' — merged locally but not pushed");
+                        entry.status = "merged_push_failed".to_string();
+                    } else {
+                        tracing::info!("Refinery: pushed main to remote after merging '{item_id}'");
+                    }
                 }
                 _ => {
                     entry.status = "merge_failed".to_string();

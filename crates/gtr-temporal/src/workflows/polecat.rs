@@ -67,12 +67,16 @@ pub async fn polecat_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::E
             rig: Some(rig.clone()),
             initial_prompt: Some(format!(
                 "You are polecat '{name}' on rig '{rig}'. Your work item: {work_item_id} — {title}.\n\
-                 Work in this directory. When done, run: $RGT_BIN done {work_item_id} --branch {branch} --summary \"<brief description of what you did>\"\n\
-                 (The RGT_BIN env var contains the full path to the rgt binary.)"
+                 Work in this directory.\n\n\
+                 IMPORTANT: You MUST run this command when your work is complete:\n\
+                 $RGT_BIN done {work_item_id} --branch $GTR_BRANCH --summary \"<what you did>\"\n\n\
+                 This is NOT optional. The system cannot merge your work without this signal.\n\
+                 Do NOT exit or stop without running this command first."
             )),
             env_extra: Some({
                 let mut m = std::collections::HashMap::new();
                 m.insert("GTR_WORK_ITEM".into(), work_item_id.clone());
+                m.insert("GTR_BRANCH".into(), branch.clone());
                 m
             }),
         };
