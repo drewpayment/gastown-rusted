@@ -59,7 +59,7 @@ pub fn ensure_tmux_config() -> anyhow::Result<PathBuf> {
         std::fs::write(
             &config_path,
             "set -g status off\n\
-             set -g mouse off\n\
+             set -g mouse on\n\
              set -g history-limit 50000\n\
              set -g default-terminal \"xterm-256color\"\n\
              set -g prefix None\n\
@@ -175,17 +175,20 @@ pub fn spawn(
     let env_json = serde_json::to_string_pretty(&env_save)?;
     std::fs::write(dir.join("env.json"), env_json)?;
 
-    // Build the shell command string
+    // Build the shell command string.
+    // Unset CLAUDECODE to prevent Claude Code from refusing to start
+    // (it detects nested sessions via this env var).
     let escaped_program = shell_escape::escape(program.into());
     let escaped_args: Vec<String> = args
         .iter()
         .map(|a| shell_escape::escape(a.into()).to_string())
         .collect();
-    let shell_cmd = if escaped_args.is_empty() {
+    let inner_cmd = if escaped_args.is_empty() {
         escaped_program.to_string()
     } else {
         format!("{escaped_program} {}", escaped_args.join(" "))
     };
+    let shell_cmd = format!("unset CLAUDECODE; {inner_cmd}");
 
     // Build tmux new-session command
     let mut cmd = std::process::Command::new("tmux");
