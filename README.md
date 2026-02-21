@@ -28,34 +28,40 @@ All state lives in Temporal workflows — no database, no local state files. The
 
 ## Installation
 
+### Quick install (recommended)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/drewpayment/gastown-rusted/main/install.sh | sh
+```
+
+Installs the latest pre-built binary to `/usr/local/bin/rgt`. Supports macOS (arm64, x86_64) and Linux (x86_64).
+
+To install a specific version:
+
+```sh
+VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/drewpayment/gastown-rusted/main/install.sh | sh
+```
+
 ### Build from source
+
+Requires [Rust stable](https://rustup.rs).
 
 ```sh
 git clone git@github.com:drewpayment/gastown-rusted.git
 cd gastown-rusted
-cargo build --release
-```
-
-The binary is at `target/release/rgt`. Add it to your PATH or symlink it:
-
-```sh
-ln -s "$(pwd)/target/release/rgt" ~/.local/bin/rgt
+cargo build --release -p gtr-cli
+cp target/release/rgt /usr/local/bin/rgt
 ```
 
 ### First-time setup
+
+After installing, run:
 
 ```sh
 rgt install
 ```
 
-This creates the `~/.gtr` directory structure and validates dependencies:
-
-```
-~/.gtr/
-  runtime/    — live process state (PIDs, env.json)
-  rigs/       — git repository workspaces
-  config/     — town.toml, tmux.conf, plugins, escalation rules
-```
+This creates `~/.gtr/` directories and validates dependencies (tmux, temporal, claude).
 
 ## Quick Start
 
