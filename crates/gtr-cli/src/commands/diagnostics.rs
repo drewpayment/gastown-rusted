@@ -31,15 +31,15 @@ pub enum DiagnosticsCommand {
 pub async fn run(cmd: &DiagnosticsCommand) -> anyhow::Result<()> {
     match cmd {
         DiagnosticsCommand::Health => {
-            println!("diagnostics health: use 'gtr doctor' for health checks");
+            println!("diagnostics health: use 'rgt doctor' for health checks");
             Ok(())
         }
         DiagnosticsCommand::Version => {
-            println!("gtr v{}", env!("CARGO_PKG_VERSION"));
+            println!("rgt v{}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         DiagnosticsCommand::Check => {
-            println!("diagnostics check: use 'gtr doctor' for system checks");
+            println!("diagnostics check: use 'rgt doctor' for system checks");
             Ok(())
         }
         DiagnosticsCommand::Feed { limit } => handle_feed(*limit).await,

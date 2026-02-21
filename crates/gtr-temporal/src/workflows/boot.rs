@@ -32,9 +32,10 @@ pub async fn boot_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Erro
         role: "mayor".to_string(),
         rig: None,
         initial_prompt: Some(
-            "You are the Mayor of Gas Town. Check your hook and mail, then act accordingly:\n\
-             1. `gtr hook` - shows hooked work (if any)\n\
-             2. `gtr mail inbox` - check for messages\n\
+            "You are the Mayor of Gas Town. The RGT_BIN env var has the full path to the rgt binary. \
+             Use $RGT_BIN instead of rgt in all commands. Check your hook and mail, then act accordingly:\n\
+             1. `$RGT_BIN hook` - shows hooked work (if any)\n\
+             2. `$RGT_BIN mail inbox` - check for messages\n\
              3. If work is hooked -> execute it immediately\n\
              4. If nothing hooked -> wait for instructions".to_string()
         ),
@@ -107,7 +108,7 @@ pub async fn boot_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Erro
                         role: "mayor".to_string(), // TODO: track original role per agent
                         rig: None,
                         initial_prompt: Some(
-                            "You are being respawned after a crash. Run `gtr prime` to restore context.".to_string()
+                            "You are being respawned after a crash. Run `$RGT_BIN prime` to restore context. (RGT_BIN env var has the full path.)".to_string()
                         ),
                         env_extra: None,
                     };

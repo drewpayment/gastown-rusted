@@ -40,7 +40,7 @@ async fn handle_status() -> anyhow::Result<()> {
         println!("Refinery:  {status}");
         println!("History:   {} events", info.history_length);
     } else {
-        println!("Refinery not running. Start it with: gtr up");
+        println!("Refinery not running. Start it with: rgt up");
     }
 
     Ok(())
@@ -66,7 +66,7 @@ async fn handle_list() -> anyhow::Result<()> {
             }
         }
         Err(_) => {
-            println!("Refinery not found. Start it with: gtr up");
+            println!("Refinery not found. Start it with: rgt up");
         }
     }
 

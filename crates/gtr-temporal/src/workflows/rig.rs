@@ -52,9 +52,10 @@ pub async fn rig_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Error
                             role: "witness".to_string(),
                             rig: Some(name.clone()),
                             initial_prompt: Some(format!(
-                                "You are the Witness for rig '{name}'. Monitor polecats and report issues.\n\
-                                 1. `gtr feed` — watch system status\n\
-                                 2. Report stuck polecats to mayor via `gtr mail send mayor`"
+                                "You are the Witness for rig '{name}'. Monitor polecats and report issues. \
+                                 Use $RGT_BIN instead of rgt (env var has the full path).\n\
+                                 1. `$RGT_BIN feed` — watch system status\n\
+                                 2. Report stuck polecats to mayor via `$RGT_BIN mail send mayor`"
                             )),
                             env_extra: None,
                         };

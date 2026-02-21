@@ -793,7 +793,6 @@ dependencies = [
  "nix",
  "prost-wkt-types",
  "serde_json",
- "signal-hook",
  "temporalio-common",
  "temporalio-sdk",
  "temporalio-sdk-core",
@@ -825,11 +824,11 @@ dependencies = [
  "futures-util",
  "git2",
  "gtr-core",
- "libc",
  "nix",
  "reqwest",
  "serde",
  "serde_json",
+ "shell-escape",
  "temporalio-client",
  "temporalio-common",
  "temporalio-sdk",
@@ -1363,15 +1362,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
-name = "memoffset"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
-dependencies = [
- "autocfg",
-]
-
-[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1440,7 +1430,6 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
- "memoffset",
 ]
 
 [[package]]
@@ -2399,6 +2388,12 @@ checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
 dependencies = [
  "lazy_static",
 ]
+
+[[package]]
+name = "shell-escape"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45bb67a18fa91266cc7807181f62f9178a6873bfad7dc788c42e6430db40184f"
 
 [[package]]
 name = "shlex"

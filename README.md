@@ -1,10 +1,10 @@
-# Gas Town Rusted (gtr)
+# Rusted Gas Town (rgt)
 
-A Rust + Temporal orchestration system that manages fleets of AI coding agents working across git repositories. GTR spawns, monitors, and coordinates Claude Code sessions through native PTY management — no tmux, no screen, just direct process control.
+A Rust + Temporal orchestration system that manages fleets of AI coding agents working across git repositories. RGT spawns, monitors, and coordinates Claude Code sessions inside persistent tmux sessions — agents survive detach/reattach without exiting.
 
 ## How It Works
 
-GTR models a **town** of AI agents organized around git repositories (**rigs**):
+RGT models a **town** of AI agents organized around git repositories (**rigs**):
 
 - **Mayor** — singleton agent that oversees the entire town, dispatches work, and handles escalations
 - **Polecats** — ephemeral workers spawned per task on a rig (one polecat = one work item)
@@ -13,7 +13,7 @@ GTR models a **town** of AI agents organized around git repositories (**rigs**):
 - **Dogs** — reusable cross-rig workers for infrastructure tasks
 - **Boot** — background health checker that respawns crashed agents
 
-Work flows through the system as **work items** grouped into **convoys** (batches). You **sling** work to a rig and GTR spawns a polecat to handle it. When the polecat finishes, it signals **done** and the refinery picks up the branch for merge.
+Work flows through the system as **work items** grouped into **convoys** (batches). You **sling** work to a rig and RGT spawns a polecat to handle it. When the polecat finishes, it signals **done** and the refinery picks up the branch for merge.
 
 All state lives in Temporal workflows — no database, no local state files. The Temporal worker _is_ the daemon.
 
@@ -21,7 +21,8 @@ All state lives in Temporal workflows — no database, no local state files. The
 
 | Dependency | Purpose | Install |
 |---|---|---|
-| **Rust** (stable, edition 2021) | Build gtr | [rustup.rs](https://rustup.rs) |
+| **Rust** (stable, edition 2021) | Build rgt | [rustup.rs](https://rustup.rs) |
+| **tmux** (>= 3.2) | Persistent agent terminals | `brew install tmux` or [github.com/tmux/tmux](https://github.com/tmux/tmux) |
 | **Temporal CLI** | Local dev server | [temporal.io/download](https://temporal.io/download) |
 | **Claude Code CLI** | AI agent runtime | [claude.ai/download](https://claude.ai/download) |
 
@@ -35,30 +36,54 @@ cd gastown-rusted
 cargo build --release
 ```
 
-The binary is at `target/release/gtr`. Add it to your PATH or symlink it:
+The binary is at `target/release/rgt`. Add it to your PATH or symlink it:
 
 ```sh
-ln -s "$(pwd)/target/release/gtr" ~/.local/bin/gtr
+ln -s "$(pwd)/target/release/rgt" ~/.local/bin/rgt
 ```
 
 ### First-time setup
 
 ```sh
-gtr install
+rgt install
 ```
 
 This creates the `~/.gtr` directory structure and validates dependencies:
 
 ```
 ~/.gtr/
-  runtime/    — live process state (PIDs, sockets)
+  runtime/    — live process state (PIDs, env.json)
   rigs/       — git repository workspaces
-  config/     — town.toml, plugins, escalation rules
+  config/     — town.toml, tmux.conf, plugins, escalation rules
 ```
 
 ## Quick Start
 
-### 1. Start Temporal
+### Simple (recommended)
+
+One command starts everything — Temporal server, worker, and workflows:
+
+```sh
+rgt start
+```
+
+Check what's running:
+
+```sh
+rgt sessions
+```
+
+When done:
+
+```sh
+rgt stop
+```
+
+### Manual (advanced)
+
+If you prefer to manage each component separately:
+
+#### 1. Start Temporal
 
 ```sh
 temporal server start-dev
@@ -66,28 +91,27 @@ temporal server start-dev
 
 Leave this running in a separate terminal.
 
-### 2. Start Gas Town
-
-In one terminal, start the Temporal worker:
+#### 2. Start the worker and bring up the town
 
 ```sh
-gtr worker run
-```
-
-In another terminal, bring up the town:
-
-```sh
-gtr up
+rgt worker run   # in one terminal
+rgt up           # in another terminal
 ```
 
 This launches the **mayor** and **boot** workflows. The mayor agent spawns as a Claude Code session.
+
+#### 3. Shut down
+
+```sh
+rgt down
+```
 
 ### 3. Register a rig
 
 A rig is a git repository that polecats will work in:
 
 ```sh
-gtr rig add my-project --path /path/to/repo
+rgt rig add my-project --path /path/to/repo
 ```
 
 This creates the rig's directory structure, starts the rig workflow, and boots its witness and refinery agents.
@@ -97,25 +121,26 @@ This creates the rig's directory structure, starts the rig workflow, and boots i
 Create a work item and assign it to a rig:
 
 ```sh
-gtr work create "Fix the login bug" --priority p1
-gtr sling <work-id> --target my-project
+rgt work create "Fix the login bug" --priority p1
+rgt sling <work-id> --target my-project
 ```
 
-GTR auto-spawns a polecat on that rig to handle the work. The polecat gets its own git worktree, a Claude Code session, and instructions via `gtr prime`.
+RGT auto-spawns a polecat on that rig to handle the work. The polecat gets its own git worktree, a Claude Code session, and instructions via `rgt prime`.
 
 ### 5. Monitor
 
 ```sh
-gtr status          # system overview — agents, rigs, polecats
-gtr feed            # real-time activity dashboard (refreshes every 5s)
+rgt status          # system overview — agents, rigs, polecats
+rgt feed            # real-time activity dashboard (refreshes every 5s)
+rgt sessions        # list active tmux sessions
 ```
 
 ### 6. Interact with agents
 
 ```sh
-gtr attach <agent>  # interactive PTY session (Ctrl+\ to detach)
-gtr chat <agent> "Check on the test failures"  # async message
-gtr mail send mayor "Deploy when ready"         # send mail to any agent
+rgt attach <agent>  # interactive PTY session (Ctrl+\ to detach)
+rgt chat <agent> "Check on the test failures"  # async message
+rgt mail send mayor "Deploy when ready"         # send mail to any agent
 ```
 
 ### 7. Complete work
@@ -123,7 +148,7 @@ gtr mail send mayor "Deploy when ready"         # send mail to any agent
 From inside an agent session (or manually):
 
 ```sh
-gtr done <work-id> --branch feature/fix-login
+rgt done <work-id> --branch feature/fix-login
 ```
 
 This signals the polecat, enqueues the branch to the rig's refinery for merge, and the polecat shuts down.
@@ -131,10 +156,9 @@ This signals the polecat, enqueues the branch to the rig's refinery for merge, a
 ### 8. Shut down
 
 ```sh
-gtr down
+rgt stop            # stops everything (workflows + worker + Temporal)
+rgt down            # or just stop workflows/agents (manual mode)
 ```
-
-Sends stop signals to all running workflows, kills PTY processes, and cleans up runtime state.
 
 ## Command Reference
 
@@ -142,83 +166,86 @@ Sends stop signals to all running workflows, kills PTY processes, and cleans up 
 
 | Command | Description |
 |---|---|
-| `gtr install` | First-time setup — create dirs, default config, validate deps |
-| `gtr up` | Start Gas Town (mayor + boot workflows) |
-| `gtr down` | Stop Gas Town (graceful shutdown of all agents) |
-| `gtr status` | Hierarchical system overview with PIDs |
-| `gtr doctor` | Check system health |
-| `gtr feed` | Real-time activity dashboard |
-| `gtr version` | Show version and build info |
+| `rgt install` | First-time setup — create dirs, default config, validate deps |
+| `rgt start` | Start everything — Temporal server, worker, and workflows (via tmux) |
+| `rgt stop` | Stop everything — workflows, worker, and Temporal server |
+| `rgt up` | Start workflows only (mayor + boot) |
+| `rgt down` | Stop workflows only (graceful shutdown of all agents) |
+| `rgt status` | Hierarchical system overview with PIDs |
+| `rgt sessions` | List active tmux sessions |
+| `rgt doctor` | Check system health |
+| `rgt feed` | Real-time activity dashboard |
+| `rgt version` | Show version and build info |
 
 ### Work Management
 
 | Command | Description |
 |---|---|
-| `gtr work create <title>` | Create a work item |
-| `gtr work list` | List work items |
-| `gtr work show <id>` | Show work item details |
-| `gtr sling <ids...> --target <target>` | Assign work (target: rig name, agent ID, `mayor`, or `dogs`) |
-| `gtr unsling <id>` | Unassign work from an agent |
-| `gtr hook` | Query current agent's assigned work |
-| `gtr done <id> --branch <branch>` | Mark work done and enqueue for merge |
-| `gtr escalate <id>` | Escalate a work item immediately |
+| `rgt work create <title>` | Create a work item |
+| `rgt work list` | List work items |
+| `rgt work show <id>` | Show work item details |
+| `rgt sling <ids...> --target <target>` | Assign work (target: rig name, agent ID, `mayor`, or `dogs`) |
+| `rgt unsling <id>` | Unassign work from an agent |
+| `rgt hook` | Query current agent's assigned work |
+| `rgt done <id> --branch <branch>` | Mark work done and enqueue for merge |
+| `rgt escalate <id>` | Escalate a work item immediately |
 
 ### Batch Operations
 
 | Command | Description |
 |---|---|
-| `gtr convoy create <ids...>` | Create a convoy (batch of work) |
-| `gtr convoy list` | List convoys |
-| `gtr convoy show <id>` | Show convoy details |
-| `gtr mol status <id>` | Check molecule (running formula) status |
-| `gtr mol cancel <id>` | Cancel a molecule |
-| `gtr mq list` | List merge queue entries |
+| `rgt convoy create <ids...>` | Create a convoy (batch of work) |
+| `rgt convoy list` | List convoys |
+| `rgt convoy show <id>` | Show convoy details |
+| `rgt mol status <id>` | Check molecule (running formula) status |
+| `rgt mol cancel <id>` | Cancel a molecule |
+| `rgt mq list` | List merge queue entries |
 
 ### Agent Interaction
 
 | Command | Description |
 |---|---|
-| `gtr attach <agent>` | Interactive PTY session with a live agent (Ctrl+\\ to detach) |
-| `gtr chat <agent> <message>` | Send async message to an agent |
-| `gtr mail send <agent> <message>` | Send mail to an agent |
-| `gtr mail inbox` | Check your inbox |
-| `gtr mail broadcast <message>` | Message all running agents |
-| `gtr agents list` | List all agents |
+| `rgt attach <agent>` | Interactive PTY session with a live agent (Ctrl+\\ to detach) |
+| `rgt chat <agent> <message>` | Send async message to an agent |
+| `rgt mail send <agent> <message>` | Send mail to an agent |
+| `rgt mail inbox` | Check your inbox |
+| `rgt mail broadcast <message>` | Message all running agents |
+| `rgt agents list` | List all agents |
 
 ### Infrastructure
 
 | Command | Description |
 |---|---|
-| `gtr rig add <name> --path <path>` | Register a git repository |
-| `gtr rig list` | List rigs |
-| `gtr rig status <name>` | Show rig status |
-| `gtr rig park <name>` | Temporarily pause a rig |
-| `gtr rig unpark <name>` | Resume a paused rig |
-| `gtr polecat list` | List polecats |
-| `gtr polecat status <id>` | Show polecat status |
-| `gtr crew create <name> --rig <rig>` | Create a persistent workspace |
-| `gtr dog create <name>` | Create a reusable cross-rig worker |
-| `gtr gate create <name> --type <timer\|human>` | Create an async wait gate |
-| `gtr gate approve <name>` | Approve a human gate |
+| `rgt rig add <name> --path <path>` | Register a git repository |
+| `rgt rig list` | List rigs |
+| `rgt rig status <name>` | Show rig status |
+| `rgt rig park <name>` | Temporarily pause a rig |
+| `rgt rig unpark <name>` | Resume a paused rig |
+| `rgt polecat list` | List polecats |
+| `rgt polecat status <id>` | Show polecat status |
+| `rgt crew create <name> --rig <rig>` | Create a persistent workspace |
+| `rgt dog create <name>` | Create a reusable cross-rig worker |
+| `rgt gate create <name> --type <timer\|human>` | Create an async wait gate |
+| `rgt gate approve <name>` | Approve a human gate |
 
 ### Session & Context
 
 | Command | Description |
 |---|---|
-| `gtr prime` | Inject role-specific context for current agent |
-| `gtr prime --hook` | Output context for Claude Code SessionStart hook |
-| `gtr handoff <message>` | Save context + checkpoint before ending a session |
-| `gtr checkpoint write` | Save session state snapshot |
-| `gtr checkpoint read` | Read last checkpoint |
-| `gtr session list` | List running agent sessions |
-| `gtr session show <id>` | Show session details |
+| `rgt prime` | Inject role-specific context for current agent |
+| `rgt prime --hook` | Output context for Claude Code SessionStart hook |
+| `rgt handoff <message>` | Save context + checkpoint before ending a session |
+| `rgt checkpoint write` | Save session state snapshot |
+| `rgt checkpoint read` | Read last checkpoint |
+| `rgt session list` | List running agent sessions |
+| `rgt session show <id>` | Show session details |
 
 ### Formulas
 
 | Command | Description |
 |---|---|
-| `gtr formula run <path>` | Execute a multi-step formula |
-| `gtr formula list` | List available formulas |
+| `rgt formula run <path>` | Execute a multi-step formula |
+| `rgt formula list` | List available formulas |
 
 ## Configuration
 
@@ -235,7 +262,7 @@ max_retries = 3
 
 ### Temporal connection
 
-By default, GTR connects to `http://localhost:7233` with the `default` namespace. Override in your town config:
+By default, RGT connects to `http://localhost:7233` with the `default` namespace. Override in your town config:
 
 ```toml
 name = "my-town"
@@ -263,7 +290,7 @@ Agents receive these environment variables automatically:
 
 ```
 ┌──────────────────────────────────────────────┐
-│  gtr CLI                                     │
+│  rgt CLI                                     │
 │  (commands → Temporal signals/start_workflow) │
 └──────────┬───────────────────────────────────┘
            │
@@ -274,20 +301,19 @@ Agents receive these environment variables automatically:
            │
            ▼
 ┌──────────────────────────────────────────────┐
-│  gtr worker (Rust Temporal worker = daemon)  │
+│  rgt worker (Rust Temporal worker = daemon)  │
 │  ┌──────────┐ ┌───────────┐ ┌─────────────┐ │
-│  │ Workflows│ │ Activities│ │ PTY Manager │ │
-│  │ 14 types │ │ 5 types   │ │ fork/exec   │ │
-│  └──────────┘ └───────────┘ │ Unix socket │ │
-│                             │ SCM_RIGHTS  │ │
+│  │ Workflows│ │ Activities│ │ tmux Manager│ │
+│  │ 14 types │ │ 5 types   │ │ -L gtr      │ │
+│  └──────────┘ └───────────┘ │ sessions    │ │
 │                             └─────────────┘ │
 └──────────────────────────────────────────────┘
            │
            ▼
 ┌──────────────────────────────────────────────┐
-│  Claude Code sessions (PTY subprocesses)     │
-│  Each agent = one PTY with fd-passing        │
-│  for detach/reattach via gtr attach          │
+│  Claude Code sessions (tmux sessions)        │
+│  Each agent = one tmux session (gtr-<id>)    │
+│  rgt attach execs into tmux attach-session   │
 └──────────────────────────────────────────────┘
 ```
 
@@ -296,7 +322,7 @@ Agents receive these environment variables automatically:
 | Crate | Purpose |
 |---|---|
 | `gtr-core` | Domain types, config, IDs, formulas, checkpoint, directory layout |
-| `gtr-temporal` | Workflows, activities, signals, PTY management, Temporal worker |
+| `gtr-temporal` | Workflows, activities, signals, tmux session management, Temporal worker |
 | `gtr-cli` | CLI commands, Temporal client connection |
 
 ### Workflows
@@ -334,10 +360,14 @@ TEMPORAL_TEST=1 cargo test --test integration -- --ignored
 cargo build
 
 # Generate shell completions
-gtr completions bash > ~/.bash_completion.d/gtr
-gtr completions zsh > ~/.zfunc/_gtr
-gtr completions fish > ~/.config/fish/completions/gtr.fish
+rgt completions bash > ~/.bash_completion.d/rgt
+rgt completions zsh > ~/.zfunc/_rgt
+rgt completions fish > ~/.config/fish/completions/rgt.fish
 ```
+
+## Acknowledgments
+
+RGT is a from-scratch Rust + Temporal rewrite inspired by [Gas Town](https://github.com/steveyegge/gastown) by [Steve Yegge](https://github.com/steveyegge). The original Gas Town (Go) pioneered the multi-agent workspace manager concept — mayor, polecats, rigs, refinery, and the town metaphor all originate from Steve's design. RGT rebuilds those ideas on Temporal workflows for durability and replay safety.
 
 ## License
 

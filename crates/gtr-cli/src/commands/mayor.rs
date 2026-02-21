@@ -31,7 +31,7 @@ async fn handle_status() -> anyhow::Result<()> {
         println!("Mayor:   {status}");
         println!("History: {} events", info.history_length);
     } else {
-        println!("Mayor workflow not found. Run `gtr up` to start.");
+        println!("Mayor workflow not found. Run `rgt up` to start.");
     }
 
     Ok(())

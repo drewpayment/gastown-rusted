@@ -66,42 +66,42 @@ pub async fn run(cmd: &PrimeCommand) -> anyhow::Result<()> {
     match role.as_str() {
         "mayor" => {
             println!("You are the **Mayor** of Gas Town.");
-            println!("- `gtr hook` — check your current work assignment");
-            println!("- `gtr mail inbox` — check for messages from agents");
-            println!("- `gtr feed` — monitor system activity");
-            println!("- `gtr sling <work-id> --target <rig>` — assign work to polecats");
-            println!("- `gtr status` — system overview");
+            println!("- `rgt hook` — check your current work assignment");
+            println!("- `rgt mail inbox` — check for messages from agents");
+            println!("- `rgt feed` — monitor system activity");
+            println!("- `rgt sling <work-id> --target <rig>` — assign work to polecats");
+            println!("- `rgt status` — system overview");
         }
         "witness" => {
             println!("You are the **Witness** for rig '{rig}'.");
-            println!("- `gtr feed` — monitor rig activity");
-            println!("- `gtr mail send mayor <message>` — escalate issues");
+            println!("- `rgt feed` — monitor rig activity");
+            println!("- `rgt mail send mayor <message>` — escalate issues");
             println!("- Watch for stuck polecats and report to mayor");
         }
         "refinery" => {
             println!("You are the **Refinery** for rig '{rig}'.");
-            println!("- `gtr mq list` — check merge queue");
+            println!("- `rgt mq list` — check merge queue");
             println!("- Process branches: rebase, test, merge");
             println!("- Report conflicts to mayor");
         }
         _ if role.contains("polecats") => {
             println!("You are a **Polecat** on rig '{rig}'.");
             println!("- Work on your assigned task in this directory");
-            println!("- `gtr hook` — check your work assignment");
-            println!("- When done: `gtr done <work-id> --branch <branch>`");
+            println!("- `rgt hook` — check your work assignment");
+            println!("- When done: `rgt done <work-id> --branch <branch>`");
         }
         _ => {
             println!("You are agent '{agent_id}' ({role}).");
-            println!("- `gtr hook` — check your current work");
-            println!("- `gtr mail inbox` — check for messages");
-            println!("- `gtr handoff` — save context before ending session");
+            println!("- `rgt hook` — check your current work");
+            println!("- `rgt mail inbox` — check for messages");
+            println!("- `rgt handoff` — save context before ending session");
         }
     }
 
     if cmd.hook {
         println!();
         println!("---");
-        println!("*Context injected by `gtr prime --hook` (SessionStart)*");
+        println!("*Context injected by `rgt prime --hook` (SessionStart)*");
     }
 
     Ok(())

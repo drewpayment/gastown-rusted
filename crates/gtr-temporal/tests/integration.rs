@@ -1,21 +1,35 @@
-//! Integration tests for GTR PTY + Temporal workflows.
+//! Integration tests for GTR tmux + Temporal workflows.
 //!
 //! These tests require either:
+//! - tmux installed for spawn/kill tests
 //! - A running Temporal dev server for workflow tests
-//! - Just the PTY module for spawn/heartbeat tests
 //!
-//! Run PTY tests: `cargo test --test integration`
+//! Run tmux tests: `cargo test --test integration`
 //! Run all (with Temporal): `TEMPORAL_TEST=1 cargo test --test integration --ignored`
 
 use std::collections::HashMap;
 use std::path::Path;
 
+fn tmux_available() -> bool {
+    std::process::Command::new("tmux")
+        .arg("-V")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 #[test]
 fn test_spawn_mock_agent() {
+    if !tmux_available() {
+        eprintln!("Skipping test -- tmux not installed");
+        return;
+    }
+
     let agent_id = "test-integration-mock";
 
     // Clean up from previous runs
     gtr_temporal::pty::cleanup(agent_id).ok();
+    let _ = gtr_temporal::pty::kill_agent(agent_id);
 
     // The integration test binary lives in target/debug/deps/ inside the workspace.
     // Walk up from CARGO_MANIFEST_DIR (crates/gtr-temporal) to the workspace root.
@@ -49,18 +63,18 @@ fn test_spawn_mock_agent() {
     );
 
     assert!(result.is_ok(), "spawn failed: {:?}", result.err());
-    let (_pid, _master_fd) = result.unwrap();
+    let _pid = result.unwrap();
 
-    // Verify alive
+    // Verify alive via tmux
     assert!(gtr_temporal::pty::is_alive(agent_id));
 
     // Verify PID file
     let pid_path = gtr_temporal::pty::runtime_dir(agent_id).join("pid");
     assert!(pid_path.exists());
 
-    // Verify socket path helper returns a path containing the agent id
-    let sock = gtr_temporal::pty::socket_path(agent_id);
-    assert!(sock.to_string_lossy().contains(agent_id));
+    // Verify tmux session name matches expected pattern
+    let session = gtr_temporal::pty::tmux_session_name(agent_id);
+    assert!(session.contains(agent_id));
 
     // Wait for script to finish (2s sleep + work)
     std::thread::sleep(std::time::Duration::from_secs(4));
@@ -70,16 +84,22 @@ fn test_spawn_mock_agent() {
 }
 
 #[test]
-fn test_spawn_with_server_and_connect() {
+fn test_spawn_with_server_and_tmux_session() {
+    if !tmux_available() {
+        eprintln!("Skipping test -- tmux not installed");
+        return;
+    }
+
     let agent_id = "test-integration-server";
 
     // Clean up from previous runs
     gtr_temporal::pty::cleanup(agent_id).ok();
+    let _ = gtr_temporal::pty::kill_agent(agent_id);
 
     let mut env = HashMap::new();
     env.insert("GTR_AGENT".into(), agent_id.into());
 
-    // Spawn with server (background thread serves PTY fd)
+    // Spawn with server (now just spawns a tmux session)
     let result = gtr_temporal::pty::spawn_with_server(
         agent_id,
         "/bin/sh",
@@ -95,7 +115,7 @@ fn test_spawn_with_server_and_connect() {
     );
     let pid = result.unwrap();
 
-    // Verify alive
+    // Verify alive via tmux
     assert!(gtr_temporal::pty::is_alive(agent_id));
 
     // Verify PID matches
@@ -103,24 +123,14 @@ fn test_spawn_with_server_and_connect() {
     assert!(read_pid.is_some());
     assert_eq!(read_pid.unwrap(), pid);
 
-    // Verify socket path exists (give server thread time to bind)
-    std::thread::sleep(std::time::Duration::from_millis(500));
-    let sock_path = gtr_temporal::pty::socket_path(agent_id);
-    assert!(
-        sock_path.exists(),
-        "Socket path should exist: {}",
-        sock_path.display()
-    );
-
-    // Connect and receive fd
-    let fd_result = gtr_temporal::pty::connect_pty(agent_id);
-    assert!(
-        fd_result.is_ok(),
-        "connect_pty failed: {:?}",
-        fd_result.err()
-    );
-    let fd = fd_result.unwrap();
-    assert!(fd >= 0, "Received fd should be non-negative");
+    // Verify tmux session exists
+    let session = gtr_temporal::pty::tmux_session_name(agent_id);
+    let has_session = std::process::Command::new("tmux")
+        .args(["-L", "gtr", "has-session", "-t", &session])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    assert!(has_session, "tmux session should exist: {session}");
 
     // Kill agent
     let kill_result = gtr_temporal::pty::kill_agent(agent_id);

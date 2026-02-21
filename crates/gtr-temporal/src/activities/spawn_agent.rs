@@ -21,7 +21,7 @@ pub struct SpawnAgentInput {
 pub struct SpawnAgentOutput {
     pub agent_id: String,
     pub pid: u32,
-    pub socket_path: String,
+    pub tmux_session: String,
 }
 
 pub async fn spawn_agent(
@@ -48,6 +48,17 @@ pub async fn spawn_agent(
     }
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
     env.insert("GTR_ROOT".into(), format!("{home}/.gtr"));
+
+    // Ensure our rgt binary is on PATH for the spawned agent
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(exe_dir) = current_exe.parent() {
+            let existing_path = std::env::var("PATH").unwrap_or_default();
+            env.insert("PATH".into(), format!("{}:{existing_path}", exe_dir.display()));
+        }
+        // Set RGT_BIN so agents can always find the exact binary path
+        env.insert("RGT_BIN".into(), current_exe.to_string_lossy().to_string());
+    }
+
     if let Some(extra) = &input.env_extra {
         env.extend(extra.clone());
     }
@@ -55,7 +66,11 @@ pub async fn spawn_agent(
     // Determine program and args based on runtime
     let (program, args) = match input.runtime.as_str() {
         "claude" => {
-            let mut args = vec!["--dangerously-skip-permissions".to_string()];
+            let mut args = vec![
+                "--dangerously-skip-permissions".to_string(),
+                "--disable-slash-commands".to_string(),
+                "--disallowedTools=Skill,AskUserQuestion,EnterPlanMode".to_string(),
+            ];
             if let Some(prompt) = &input.initial_prompt {
                 args.push(prompt.clone());
             }
@@ -94,20 +109,19 @@ pub async fn spawn_agent(
         ActivityError::NonRetryable(anyhow::anyhow!("Failed to spawn agent: {e}"))
     })?;
 
-    let socket_path = pty::socket_path(&input.agent_id)
-        .to_string_lossy()
-        .to_string();
+    let tmux_session = pty::tmux_session_name(&input.agent_id);
 
     tracing::info!(
-        "Spawned agent '{}' (PID {}, runtime {})",
+        "Spawned agent '{}' (PID {}, runtime {}, session {})",
         input.agent_id,
         pid,
-        input.runtime
+        input.runtime,
+        tmux_session
     );
 
     Ok(SpawnAgentOutput {
         agent_id: input.agent_id,
         pid: pid.as_raw() as u32,
-        socket_path,
+        tmux_session,
     })
 }

@@ -59,7 +59,7 @@ pub async fn run(cmd: &HandoffCommand) -> anyhow::Result<()> {
         .await?;
 
     println!("Handoff saved for {agent_id}");
-    println!("Next session: run `gtr prime` to recover context.");
+    println!("Next session: run `rgt prime` to recover context.");
 
     Ok(())
 }

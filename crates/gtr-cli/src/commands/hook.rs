@@ -28,7 +28,7 @@ pub async fn run(cmd: &HookCommand) -> anyhow::Result<()> {
 
         if info.status == 1 {
             println!("Hook:   (query agent workflow for current hook state)");
-            println!("        Use: gtr hook {agent_id} — agent must expose query handler");
+            println!("        Use: rgt hook {agent_id} — agent must expose query handler");
         } else if info.status == 2 {
             println!("Hook:   (agent stopped — check workflow result for final state)");
         }

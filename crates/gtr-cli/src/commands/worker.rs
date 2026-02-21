@@ -7,11 +7,8 @@ pub enum WorkerCommand {
     Run,
 }
 
-pub fn run(cmd: &WorkerCommand) -> anyhow::Result<()> {
+pub async fn run(cmd: &WorkerCommand) -> anyhow::Result<()> {
     match cmd {
-        WorkerCommand::Run => {
-            let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(gtr_temporal::worker::run_worker())
-        }
+        WorkerCommand::Run => gtr_temporal::worker::run_worker().await,
     }
 }

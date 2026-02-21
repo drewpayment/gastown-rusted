@@ -4,23 +4,23 @@ mod commands;
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 
-/// gtr — Gas Town Rusted CLI
+/// rgt — Rusted Gas Town CLI
 #[derive(Debug, Parser)]
-#[command(name = "gtr", version, about, long_about = "\
-gtr — Gas Town Rusted CLI
+#[command(name = "rgt", version, about, long_about = "\
+rgt — Rusted Gas Town CLI
 
 Quick reference:
-  gtr up                      Start Gas Town (launch mayor)
-  gtr down                    Stop Gas Town gracefully
-  gtr status                  Show system overview
-  gtr rig list                List rigs (repos)
-  gtr agents list             List running agents
-  gtr work list               List active work items
-  gtr hook [AGENT]            Query agent's current work (env: GTR_AGENT)
-  gtr mail inbox [AGENT]      Check agent inbox (env: GTR_AGENT)
-  gtr mail send <TO> <MSG>    Send message to agent
-  gtr done <WORK_ID> -b <BR>  Mark work done, enqueue merge (env: GTR_WORK_ITEM)
-  gtr feed                    Real-time activity dashboard
+  rgt up                      Start Gas Town (launch mayor)
+  rgt down                    Stop Gas Town gracefully
+  rgt status                  Show system overview
+  rgt rig list                List rigs (repos)
+  rgt agents list             List running agents
+  rgt work list               List active work items
+  rgt hook [AGENT]            Query agent's current work (env: GTR_AGENT)
+  rgt mail inbox [AGENT]      Check agent inbox (env: GTR_AGENT)
+  rgt mail send <TO> <MSG>    Send message to agent
+  rgt done <WORK_ID> -b <BR>  Mark work done, enqueue merge (env: GTR_WORK_ITEM)
+  rgt feed                    Real-time activity dashboard
 
 Environment variables:
   GTR_AGENT       Default agent ID for hook, mail, checkpoint
@@ -130,6 +130,15 @@ enum Command {
     /// Stop Gas Town gracefully (stop mayor and all agents)
     Down,
 
+    /// Start everything — Temporal server, worker, and workflows (via tmux)
+    Start,
+
+    /// Stop everything — workflows, worker, and Temporal server
+    Stop,
+
+    /// List active tmux sessions
+    Sessions,
+
     /// First-time setup — create directories, default config, validate dependencies
     Install(commands::install::InstallCommand),
 
@@ -205,6 +214,9 @@ async fn main() -> anyhow::Result<()> {
         Command::Doctor => commands::doctor::run().await,
         Command::Up => commands::up::run().await,
         Command::Down => commands::down::run().await,
+        Command::Start => commands::start::run().await,
+        Command::Stop => commands::stop::run().await,
+        Command::Sessions => commands::sessions::run(),
         Command::Install(cmd) => commands::install::run(&cmd).await,
         Command::Status => commands::status::run().await,
         Command::Session(cmd) => commands::session::run(cmd).await,
@@ -213,7 +225,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Diagnostics(cmd) => commands::diagnostics::run(cmd).await,
         Command::Worker(cmd) => commands::worker::run(cmd).await,
         Command::Version => {
-            println!("gtr {} ({})", env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_NAME"));
+            println!("rgt {} ({})", env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_NAME"));
             println!("Rust edition: 2021");
             println!("Temporal SDK: rev 7ecb7c0");
             Ok(())
@@ -222,7 +234,7 @@ async fn main() -> anyhow::Result<()> {
             clap_complete::generate(
                 *shell,
                 &mut Cli::command(),
-                "gtr",
+                "rgt",
                 &mut std::io::stdout(),
             );
             Ok(())

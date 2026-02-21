@@ -25,14 +25,19 @@ pub struct SlingCommand {
 pub async fn run(cmd: &SlingCommand) -> anyhow::Result<()> {
     let client = crate::client::connect().await?;
 
-    if cmd.work_ids.is_empty() {
-        anyhow::bail!("No work item IDs provided");
-    }
+    // Auto-generate a work item ID if none provided
+    let work_ids = if cmd.work_ids.is_empty() {
+        let id = gtr_core::ids::work_item_id();
+        println!("Auto-generated work item: {id}");
+        vec![id]
+    } else {
+        cmd.work_ids.clone()
+    };
 
     match cmd.target.as_str() {
         "mayor" => {
             // Send all work items to the Mayor for dispatch
-            for work_id in &cmd.work_ids {
+            for work_id in &work_ids {
                 let signal = AgentAssignSignal {
                     work_item_id: work_id.clone(),
                     title: cmd.title.clone().unwrap_or_else(|| work_id.clone()),
@@ -52,7 +57,7 @@ pub async fn run(cmd: &SlingCommand) -> anyhow::Result<()> {
         }
         "dogs" => {
             // Dispatch to idle dogs
-            for work_id in &cmd.work_ids {
+            for work_id in &work_ids {
                 // Find an idle dog — for now, dispatch to first running dog_wf
                 let query =
                     "WorkflowType = 'dog_wf' AND ExecutionStatus = 'Running'".to_string();
@@ -87,12 +92,14 @@ pub async fn run(cmd: &SlingCommand) -> anyhow::Result<()> {
             }
         }
         target => {
-            // Target is either an agent ID or a rig name
-            // If target contains "rig-" or matches a known rig, auto-spawn polecat
-            if target.starts_with("rig-") || !target.contains('-') {
+            // Target is either an agent ID or a rig name.
+            // Check if a rig directory exists for this target name.
+            let rig_name = target.strip_prefix("rig-").unwrap_or(target);
+            let is_rig = gtr_core::dirs::rig_dir(rig_name).exists();
+            if is_rig {
                 // Auto-spawn polecat per work item
-                let rig = target.strip_prefix("rig-").unwrap_or(target);
-                for work_id in &cmd.work_ids {
+                let rig = rig_name;
+                for work_id in &work_ids {
                     let polecat_name = gtr_core::namepool::next_name();
                     let polecat_id =
                         gtr_core::state::polecat_workflow_id(rig, &polecat_name);
@@ -121,7 +128,7 @@ pub async fn run(cmd: &SlingCommand) -> anyhow::Result<()> {
                 }
             } else {
                 // Direct agent assignment
-                for work_id in &cmd.work_ids {
+                for work_id in &work_ids {
                     let signal = AgentAssignSignal {
                         work_item_id: work_id.clone(),
                         title: cmd
@@ -145,10 +152,10 @@ pub async fn run(cmd: &SlingCommand) -> anyhow::Result<()> {
         }
     }
 
-    if cmd.work_ids.len() > 1 {
+    if work_ids.len() > 1 {
         println!(
             "Batch dispatched {} work items to {}",
-            cmd.work_ids.len(),
+            work_ids.len(),
             cmd.target
         );
     }

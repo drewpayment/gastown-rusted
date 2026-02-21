@@ -144,8 +144,7 @@ pub async fn run(cmd: &FeedCommand) -> anyhow::Result<()> {
 
         // Section 4: Recent completions
         writeln!(out, "\n--- Recent Completions ---")?;
-        let completed_query =
-            "ExecutionStatus != 'Running' ORDER BY CloseTime DESC".to_string();
+        let completed_query = "ExecutionStatus != 'Running'".to_string();
         let completed = client
             .list_workflow_executions(10, vec![], completed_query)
             .await?;

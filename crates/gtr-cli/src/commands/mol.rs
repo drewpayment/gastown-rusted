@@ -61,7 +61,7 @@ pub async fn run(cmd: &MolCommand) -> anyhow::Result<()> {
             let agent_id = std::env::var("GTR_AGENT")
                 .unwrap_or_else(|_| "unknown".into());
             println!("Current molecule for agent {agent_id}:");
-            println!("  (query agent hook for molecule_id — use `gtr hook {agent_id}`)");
+            println!("  (query agent hook for molecule_id — use `rgt hook {agent_id}`)");
         }
         MolCommand::StepDone { id, step, output } => {
             let signal = MolStepDoneSignal {

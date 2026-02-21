@@ -59,6 +59,22 @@ pub async fn run(cmd: &RigCommand) -> anyhow::Result<()> {
             gtr_core::dirs::ensure_rig_dirs(name)?;
             println!("Created directory structure for rig '{name}'");
 
+            // Bare-clone the repo so worktrees can be created later
+            let repo_git = gtr_core::dirs::rig_dir(name).join(".repo.git");
+            if repo_git.exists() {
+                println!("Repo already cloned at {}", repo_git.display());
+            } else {
+                println!("Cloning {git_url} (bare) ...");
+                let status = std::process::Command::new("git")
+                    .args(["clone", "--bare", git_url.as_str()])
+                    .arg(&repo_git)
+                    .status()?;
+                if !status.success() {
+                    anyhow::bail!("git clone --bare failed (exit {})", status);
+                }
+                println!("Cloned bare repo to {}", repo_git.display());
+            }
+
             // Start rig workflow
             let input_payload = (name.as_str(), git_url.as_str()).as_json_payload()?;
             client
