@@ -112,8 +112,7 @@ main() {
     BASE_URL="https://github.com/$REPO/releases/download/$VERSION"
 
     # Download to temp dir
-    TMP="$(mktemp -d)"
-    trap 'rm -rf "$TMP"' EXIT
+    TMP="$(mktemp -d /tmp/rgt-install-XXXXXX)"
 
     say "Downloading $ARCHIVE..."
     curl -fsSL "$BASE_URL/$ARCHIVE" -o "$TMP/$ARCHIVE"
@@ -129,8 +128,18 @@ main() {
     say "Extracting..."
     tar -xzf "$TMP/$ARCHIVE" -C "$TMP"
 
+    # Confirm binary was extracted
+    if [ ! -f "$TMP/$BINARY" ]; then
+        say "Tarball contents:"
+        tar -tzf "$TMP/$ARCHIVE" >&2 || true
+        rm -rf "$TMP"
+        err "Binary '$BINARY' not found in tarball after extraction. Contents listed above."
+    fi
+
     say "Installing to $INSTALL_DIR/$BINARY..."
     install_binary "$TMP/$BINARY"
+
+    rm -rf "$TMP"
 
     printf "\n"
     say "rgt installed successfully!"
