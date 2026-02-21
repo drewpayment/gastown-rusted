@@ -225,9 +225,12 @@ async fn main() -> anyhow::Result<()> {
         Command::Diagnostics(cmd) => commands::diagnostics::run(cmd).await,
         Command::Worker(cmd) => commands::worker::run(cmd).await,
         Command::Version => {
-            println!("rgt {} ({})", env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_NAME"));
-            println!("Rust edition: 2021");
-            println!("Temporal SDK: rev 7ecb7c0");
+            println!(
+                "rgt {} ({})",
+                env!("CARGO_PKG_VERSION"),
+                env!("GIT_VERSION")
+            );
+            println!("Built: {}", env!("BUILD_DATE"));
             Ok(())
         }
         Command::Completions { shell } => {
