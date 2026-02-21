@@ -67,6 +67,16 @@ verify_checksum() {
 install_binary() {
     BINARY_PATH="$1"
 
+    # Create install dir if it doesn't exist
+    if [ ! -d "$INSTALL_DIR" ]; then
+        if mkdir -p "$INSTALL_DIR" 2>/dev/null; then
+            : # created successfully
+        else
+            say "Creating $INSTALL_DIR requires sudo..."
+            sudo mkdir -p "$INSTALL_DIR"
+        fi
+    fi
+
     if [ -w "$INSTALL_DIR" ]; then
         cp "$BINARY_PATH" "$INSTALL_DIR/$BINARY"
         chmod +x "$INSTALL_DIR/$BINARY"
