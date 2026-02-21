@@ -77,6 +77,15 @@ install_binary() {
         fi
     fi
 
+    # Remove existing binary or broken symlink before copying
+    if [ -L "$INSTALL_DIR/$BINARY" ] || [ -f "$INSTALL_DIR/$BINARY" ]; then
+        if [ -w "$INSTALL_DIR/$BINARY" ] || [ -w "$INSTALL_DIR" ]; then
+            rm -f "$INSTALL_DIR/$BINARY"
+        else
+            sudo rm -f "$INSTALL_DIR/$BINARY"
+        fi
+    fi
+
     if [ -w "$INSTALL_DIR" ]; then
         cp "$BINARY_PATH" "$INSTALL_DIR/$BINARY"
         chmod +x "$INSTALL_DIR/$BINARY"
