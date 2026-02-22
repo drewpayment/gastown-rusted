@@ -49,6 +49,8 @@ pub enum RigCommand {
         /// Rig name
         name: String,
     },
+    /// Sync rigs from disk to registry (backfill existing rigs)
+    Sync,
 }
 
 pub async fn run(cmd: &RigCommand) -> anyhow::Result<()> {
@@ -213,6 +215,48 @@ pub async fn run(cmd: &RigCommand) -> anyhow::Result<()> {
                 )
                 .await?;
             println!("Stopped rig: {name}");
+        }
+        RigCommand::Sync => {
+            let rigs_dir = gtr_core::dirs::rigs_dir();
+            let mut config = gtr_core::config::RigsConfig::load()?;
+            let mut synced = 0;
+
+            if rigs_dir.exists() {
+                for entry in std::fs::read_dir(&rigs_dir)?.flatten() {
+                    if !entry.path().is_dir() {
+                        continue;
+                    }
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    let repo_git = entry.path().join(".repo.git");
+                    if !repo_git.exists() {
+                        continue;
+                    }
+                    // Read git URL from bare repo config
+                    let git_url_output = std::process::Command::new("git")
+                        .args(["-C", repo_git.to_str().unwrap_or(""), "config", "--get", "remote.origin.url"])
+                        .output();
+                    let git_url = git_url_output
+                        .ok()
+                        .filter(|o| o.status.success())
+                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                        .unwrap_or_default();
+
+                    if config.rigs.iter().any(|r| r.name == name) {
+                        println!("  {name} — already in registry");
+                    } else {
+                        config.add(&name, &git_url);
+                        println!("  {name} — added ({git_url})");
+                        synced += 1;
+                    }
+                }
+            }
+
+            config.save()?;
+            if synced > 0 {
+                println!("Synced {synced} rig(s) to registry.");
+            } else {
+                println!("Registry already up to date.");
+            }
         }
     }
     Ok(())
