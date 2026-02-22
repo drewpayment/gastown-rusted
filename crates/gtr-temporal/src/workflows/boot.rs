@@ -40,6 +40,7 @@ pub async fn boot_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Erro
              4. If nothing hooked -> wait for instructions".to_string()
         ),
         env_extra: None,
+        resume_session_id: None,
     };
 
     let result = ctx
@@ -111,6 +112,7 @@ pub async fn boot_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Erro
                             "You are being respawned after a crash. Run `$RGT_BIN prime` to restore context. (RGT_BIN env var has the full path.)".to_string()
                         ),
                         env_extra: None,
+                        resume_session_id: None,
                     };
 
                     let result = ctx

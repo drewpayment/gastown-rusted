@@ -15,6 +15,8 @@ pub struct SpawnAgentInput {
     pub rig: Option<String>,
     pub initial_prompt: Option<String>,
     pub env_extra: Option<HashMap<String, String>>,
+    #[serde(default)]
+    pub resume_session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +73,10 @@ pub async fn spawn_agent(
                 "--disable-slash-commands".to_string(),
                 "--disallowedTools=Skill,AskUserQuestion,EnterPlanMode".to_string(),
             ];
+            if let Some(session_id) = &input.resume_session_id {
+                args.push("--resume".to_string());
+                args.push(session_id.clone());
+            }
             if let Some(prompt) = &input.initial_prompt {
                 args.push(prompt.clone());
             }

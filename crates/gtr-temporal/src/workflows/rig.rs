@@ -58,6 +58,7 @@ pub async fn rig_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Error
                                  2. Report stuck polecats to mayor via `$RGT_BIN mail send mayor`"
                             )),
                             env_extra: None,
+                            resume_session_id: None,
                         };
 
                         let result = ctx
@@ -88,6 +89,7 @@ pub async fn rig_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Error
                                  Check for enqueued branches and merge them."
                             )),
                             env_extra: None,
+                            resume_session_id: None,
                         };
 
                         let result = ctx
@@ -112,6 +114,8 @@ pub async fn rig_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::Error
                 tracing::info!("Rig {name} stopped");
                 return Ok(WfExitValue::Normal(serde_json::to_string(&RigState {
                     name, git_url, status, agents, polecats, crew, has_witness, has_refinery,
+                    witness_session_id: None,
+                    refinery_session_id: None,
                 })?));
             }
             Some(_) = park_ch.next() => {

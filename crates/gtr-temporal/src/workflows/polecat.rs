@@ -79,6 +79,7 @@ pub async fn polecat_wf(ctx: WfContext) -> Result<WfExitValue<String>, anyhow::E
                 m.insert("GTR_BRANCH".into(), branch.clone());
                 m
             }),
+            resume_session_id: None,
         };
 
         let spawn_result = ctx
