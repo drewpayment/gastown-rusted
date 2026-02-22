@@ -102,6 +102,12 @@ pub async fn run(cmd: &RigCommand) -> anyhow::Result<()> {
             println!("Booted rig '{name}' — witness + refinery will spawn");
 
             println!("Registered rig: {name} ({git_url})");
+
+            // Persist to registry
+            let mut rigs_config = gtr_core::config::RigsConfig::load()?;
+            rigs_config.add(name, git_url);
+            rigs_config.save()?;
+            println!("Saved to registry (rigs.toml)");
         }
         RigCommand::List => {
             let query =
