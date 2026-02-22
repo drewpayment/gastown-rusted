@@ -208,6 +208,10 @@ pub struct RigState {
     pub crew: Vec<String>,
     pub has_witness: bool,
     pub has_refinery: bool,
+    #[serde(default)]
+    pub witness_session_id: Option<String>,
+    #[serde(default)]
+    pub refinery_session_id: Option<String>,
 }
 
 // Polecat signal names
