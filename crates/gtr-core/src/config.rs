@@ -32,6 +32,57 @@ pub struct RigsConfig {
     pub rigs: Vec<RigEntry>,
 }
 
+impl RigsConfig {
+    /// Load from a specific path; returns empty config if file doesn't exist.
+    pub fn load_from(path: &Path) -> anyhow::Result<Self> {
+        if !path.exists() {
+            return Ok(RigsConfig { rigs: vec![] });
+        }
+        let content = std::fs::read_to_string(path)?;
+        let config: RigsConfig = toml::from_str(&content)?;
+        Ok(config)
+    }
+
+    /// Load from the default location (~/.gtr/config/rigs.toml).
+    pub fn load() -> anyhow::Result<Self> {
+        let path = crate::dirs::config_dir().join("rigs.toml");
+        Self::load_from(&path)
+    }
+
+    /// Save to a specific path.
+    pub fn save_to(&self, path: &Path) -> anyhow::Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let content = toml::to_string_pretty(self)?;
+        std::fs::write(path, content)?;
+        Ok(())
+    }
+
+    /// Save to the default location (~/.gtr/config/rigs.toml).
+    pub fn save(&self) -> anyhow::Result<()> {
+        let path = crate::dirs::config_dir().join("rigs.toml");
+        self.save_to(&path)
+    }
+
+    /// Add a rig entry. Idempotent — skips if name already exists.
+    pub fn add(&mut self, name: &str, git_url: &str) {
+        if self.rigs.iter().any(|r| r.name == name) {
+            return;
+        }
+        self.rigs.push(RigEntry {
+            name: name.to_string(),
+            path: crate::dirs::rig_dir(name),
+            git_url: Some(git_url.to_string()),
+        });
+    }
+
+    /// Remove a rig entry by name.
+    pub fn remove(&mut self, name: &str) {
+        self.rigs.retain(|r| r.name != name);
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RigConfig {
     pub name: String,
@@ -145,5 +196,55 @@ max_re_escalations = 2
     fn find_town_root_returns_none_when_missing() {
         let dir = tempdir().unwrap();
         assert!(find_town_root(dir.path()).is_none());
+    }
+
+    #[test]
+    fn rigs_config_load_empty() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("rigs.toml");
+        let config = RigsConfig::load_from(&path).unwrap();
+        assert!(config.rigs.is_empty());
+    }
+
+    #[test]
+    fn rigs_config_add_and_save() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("rigs.toml");
+        let mut config = RigsConfig::load_from(&path).unwrap();
+        config.add("myrig", "git@github.com:user/repo.git");
+        config.save_to(&path).unwrap();
+
+        let reloaded = RigsConfig::load_from(&path).unwrap();
+        assert_eq!(reloaded.rigs.len(), 1);
+        assert_eq!(reloaded.rigs[0].name, "myrig");
+        assert_eq!(
+            reloaded.rigs[0].git_url,
+            Some("git@github.com:user/repo.git".into())
+        );
+    }
+
+    #[test]
+    fn rigs_config_add_idempotent() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("rigs.toml");
+        let mut config = RigsConfig::load_from(&path).unwrap();
+        config.add("myrig", "git@github.com:user/repo.git");
+        config.add("myrig", "git@github.com:user/repo.git");
+        assert_eq!(config.rigs.len(), 1);
+    }
+
+    #[test]
+    fn rigs_config_remove() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("rigs.toml");
+        let mut config = RigsConfig::load_from(&path).unwrap();
+        config.add("rig-a", "git@github.com:user/a.git");
+        config.add("rig-b", "git@github.com:user/b.git");
+        config.remove("rig-a");
+        config.save_to(&path).unwrap();
+
+        let reloaded = RigsConfig::load_from(&path).unwrap();
+        assert_eq!(reloaded.rigs.len(), 1);
+        assert_eq!(reloaded.rigs[0].name, "rig-b");
     }
 }
