@@ -12,7 +12,7 @@ pub async fn start_workflows() -> anyhow::Result<(bool, bool)> {
 
     // Check and start mayor
     let mut mayor_started = false;
-    let mayor_running = is_workflow_running(&client, "mayor").await;
+    let mayor_running = is_workflow_running_pub(&client, "mayor").await;
     if !mayor_running {
         let payload = "default".as_json_payload()?;
         client
@@ -30,7 +30,7 @@ pub async fn start_workflows() -> anyhow::Result<(bool, bool)> {
 
     // Check and start boot
     let mut boot_started = false;
-    let boot_running = is_workflow_running(&client, "boot").await;
+    let boot_running = is_workflow_running_pub(&client, "boot").await;
     if !boot_running {
         let boot_payload = 120u64.as_json_payload()?;
         let _ = client
@@ -49,7 +49,7 @@ pub async fn start_workflows() -> anyhow::Result<(bool, bool)> {
     Ok((mayor_started, boot_started))
 }
 
-async fn is_workflow_running(
+pub async fn is_workflow_running_pub(
     client: &dyn WorkflowClientTrait,
     workflow_id: &str,
 ) -> bool {

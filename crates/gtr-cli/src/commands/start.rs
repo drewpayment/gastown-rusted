@@ -1,6 +1,9 @@
 use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
+use temporalio_common::protos::coresdk::AsJsonPayloadExt;
+use temporalio_sdk_core::WorkflowClientTrait;
+
 fn ensure_tmux() -> anyhow::Result<()> {
     let ok = std::process::Command::new("tmux")
         .arg("-V")
@@ -143,6 +146,53 @@ pub async fn run() -> anyhow::Result<()> {
     let (mayor_started, boot_started) = crate::commands::up::start_workflows().await?;
     println!("[ok] Mayor workflow: {}", if mayor_started { "started" } else { "already running" });
     println!("[ok] Boot workflow: {}", if boot_started { "started" } else { "already running" });
+
+    // Step 4: Re-register rigs from registry
+    let rigs_config = gtr_core::config::RigsConfig::load()?;
+    if !rigs_config.rigs.is_empty() {
+        println!("[..] Re-registering rigs...");
+        let client = crate::client::connect().await?;
+        for rig_entry in &rigs_config.rigs {
+            let wf_id = format!("rig-{}", rig_entry.name);
+            let already_running = crate::commands::up::is_workflow_running_pub(&client, &wf_id).await;
+            if already_running {
+                println!("[ok] Rig '{}' already running", rig_entry.name);
+            } else {
+                let git_url = rig_entry.git_url.as_deref().unwrap_or("");
+                let input_payload = (rig_entry.name.as_str(), git_url)
+                    .as_json_payload()?;
+                if let Err(e) = client
+                    .start_workflow(
+                        vec![input_payload],
+                        "work".to_string(),
+                        wf_id.clone(),
+                        "rig_wf".to_string(),
+                        None,
+                        Default::default(),
+                    )
+                    .await
+                {
+                    println!("[!!] Failed to start rig '{}': {e}", rig_entry.name);
+                    continue;
+                }
+                // Signal rig to boot
+                if let Err(e) = client
+                    .signal_workflow_execution(
+                        wf_id,
+                        String::new(),
+                        "rig_boot".to_string(),
+                        None,
+                        None,
+                    )
+                    .await
+                {
+                    println!("[!!] Failed to boot rig '{}': {e}", rig_entry.name);
+                    continue;
+                }
+                println!("[ok] Rig '{}' re-registered and booted", rig_entry.name);
+            }
+        }
+    }
 
     println!();
     println!("Gas Town is up. Run `rgt sessions` to see active sessions.");
